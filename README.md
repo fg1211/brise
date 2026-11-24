@@ -29,8 +29,10 @@ Die Ortsuche findet **jeden Ort in Deutschland**, auch kleine Gemeinden und Stad
 - **Amtliche Warnungen** mit Gültigkeitszeitraum, Schweregrad und Handlungshinweisen.
 - **Regenradar** mit 31 animierten DWD-Radarbildern, Zeitsteuerung und 90-Minuten-Prognose.
 - **Deutschlandkarte** mit Städtevergleich, Ranking und echten Bundesländergrenzen.
+- **Einrichtung beim ersten Start**: Darstellung wählen und den eigenen Startort aus ganz Deutschland suchen.
 - **Suche & Favoriten**, persistente Einstellungen, Einheiten und zwei Farbschemata (*Mitternacht* / *Tageslicht*).
 - **Offline-Fallback**: zuletzt geladene Daten bleiben mit klar gekennzeichnetem Cache-Status nutzbar.
+- **Skaliert mit der Arbeitsfläche**: auch als kleines, geteiltes Fenster auf Hyprland bleibt die Oberfläche übersichtlich.
 - **Wayland-optimiert**: native GTK/Wayland-Darstellung, eigene Fensterdekoration und ein Launcher für Hyprland.
 
 ## Installation
