@@ -655,8 +655,8 @@ fn place_on_secondary_monitor(window: &tauri::WebviewWindow) {
 
     if let Some(monitor) = target {
         let area = monitor.work_area();
-        let width = (1440).min(area.size.width.saturating_sub(48)).max(1040);
-        let height = (900).min(area.size.height.saturating_sub(80)).max(700);
+        let width = (1440).min(area.size.width.saturating_sub(48)).max(640);
+        let height = (900).min(area.size.height.saturating_sub(80)).max(480);
         let x = area.position.x + ((area.size.width.saturating_sub(width)) / 2) as i32;
         let y = area.position.y + ((area.size.height.saturating_sub(height)) / 2) as i32;
 
