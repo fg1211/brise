@@ -40,7 +40,7 @@ Die Ortsuche findet **jeden Ort in Deutschland**, auch kleine Gemeinden und Stad
 Das Repository enthält ein vorgebautes Linux-Binary in `dist/`:
 
 ```bash
-git clone https://github.com/DEINNAME/brise.git
+git clone https://github.com/fg1211/brise.git
 cd brise
 ./install.sh                 # nach ~/.local
 ```
