@@ -43,6 +43,7 @@ import { GERMANY_GEO } from './germany-geo.js';
 const SETTINGS_KEY = 'brise.settings.v1';
 const FAVORITES_KEY = 'brise.favorites.v1';
 const CITY_KEY = 'brise.city.v1';
+const ONBOARDING_KEY = 'brise.onboarding.v1';
 
 const VIEW_IDS = new Set(['weather', 'radar', 'germany']);
 
@@ -102,6 +103,18 @@ const state = {
   searchGeneration: 0,
   refreshTimer: null,
   overlayOpen: false,
+  overlayLocked: false,
+  onboardingOpen: false,
+  onboarding: {
+    step: 1,
+    items: [],
+    places: [],
+    index: 0,
+    loading: false,
+    error: null,
+    timer: null,
+    generation: 0,
+  },
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -255,6 +268,8 @@ function closeOverlay() {
   const hadOverlay = Boolean(root.firstElementChild);
   root.innerHTML = '';
   state.overlayOpen = false;
+  state.overlayLocked = false;
+  state.onboardingOpen = false;
   state.searchGeneration += 1;
   if (state.remoteTimer) {
     clearTimeout(state.remoteTimer);
@@ -272,8 +287,10 @@ function showOverlay(markup, options = {}) {
   if (!state.overlayOpen) overlayReturnFocus = document.activeElement;
   root.innerHTML = `<div class="overlay" data-overlay>${markup}</div>`;
   state.overlayOpen = true;
+  state.overlayLocked = Boolean(options.locked);
   const overlay = $('[data-overlay]', root);
   overlay.addEventListener('click', (event) => {
+    if (state.overlayLocked) return;
     if (event.target === overlay || event.target.closest('[data-close]')) {
       closeOverlay();
     }
@@ -1477,6 +1494,282 @@ function openSearch(prefill = '') {
 }
 
 
+// ---------- Erste Einrichtung ----------
+
+function needsOnboarding() {
+  return loadJSON(ONBOARDING_KEY, false) !== true && loadJSON(CITY_KEY, null) === null;
+}
+
+function finishOnboarding(city) {
+  if (state.onboarding.timer) {
+    clearTimeout(state.onboarding.timer);
+    state.onboarding.timer = null;
+  }
+  state.onboarding.generation += 1;
+  saveJSON(ONBOARDING_KEY, true);
+  if (city) {
+    if (!isFavorite(city.id)) {
+      state.favorites = [...state.favorites, city.id];
+      persistFavorites();
+      loadFavoriteSummaries();
+    }
+    selectCity(city.id, { navigate: true });
+    showToast(`Brise ist eingerichtet. ${city.name} ist dein Startort.`, { icon: 'pin' });
+  } else {
+    showToast('Du kannst deinen Ort jederzeit über die Suche auswählen.', { icon: 'info' });
+  }
+  closeOverlay();
+}
+
+function onboardingItems() {
+  const input = $('#onboardInput');
+  const query = input ? input.value.trim() : '';
+  if (normalizeSearch(query).length >= 2) {
+    const items = searchCities(query, 8).map((city) => ({ city }));
+    const seen = new Set(items.map((item) => normalizeSearch(`${item.city.name}${item.city.state}`)));
+    for (const place of state.onboarding.places) {
+      const key = normalizeSearch(`${place.name}${place.state}`);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({ city: place, remote: true });
+    }
+    return items;
+  }
+  const ids = [...new Set([state.selectedCityId, ...state.favorites,
+    'berlin', 'hamburg', 'muenchen', 'koeln', 'frankfurt', 'stuttgart'])];
+  return ids.slice(0, 8).map((id) => CITY_BY_ID[id]).filter(Boolean).map((city) => ({ city }));
+}
+
+function renderOnboardingResults(resetIndex = false) {
+  const results = $('#onboardResults');
+  if (!results) return;
+  const onboarding = state.onboarding;
+  if (resetIndex) onboarding.index = 0;
+  onboarding.items = onboardingItems();
+  if (onboarding.index >= onboarding.items.length) {
+    onboarding.index = Math.max(0, onboarding.items.length - 1);
+  }
+  const status = [];
+  if (onboarding.loading) {
+    status.push('<div class="onboard-status"><span class="loader-orbit is-small"></span> Orte in ganz Deutschland werden gesucht …</div>');
+  } else if (onboarding.error) {
+    status.push(`<div class="onboard-status is-error">Ortsuche gerade nicht verfügbar: ${escapeHTML(onboarding.error)}. Die Orte unten funktionieren trotzdem.</div>`);
+  }
+  if (!onboarding.items.length && !onboarding.loading) {
+    status.push('<div class="onboard-empty"><strong>Kein Ort gefunden</strong><span>Versuche einen anderen Ortsnamen.</span></div>');
+  }
+  results.innerHTML = onboarding.items.map((item, index) => {
+    const city = item.city;
+    const weather = summaryWeather(city.id);
+    const temp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '';
+    const detail = weather
+      ? `${summaryLabel(city, weather)} · ${city.state}`
+      : (item.remote ? `${city.state} · Neu in Brise` : city.state);
+    const selected = index === onboarding.index;
+    return `<div class="onboard-city${selected ? ' is-selected' : ''}" data-onboard-item="${index}" role="option" aria-selected="${selected}">
+      <span class="onboard-city-icon">${weather ? weatherIcon(summaryIconName(city, weather)) : icon('pin', 17)}</span>
+      <span class="onboard-city-copy"><strong>${escapeHTML(city.name)}</strong><small>${escapeHTML(detail)}</small></span>
+      ${temp ? `<span class="onboard-city-temp">${escapeHTML(temp)}</span>` : ''}
+    </div>`;
+  }).join('') + status.join('');
+  requestAnimationFrame(() => {
+    results.querySelector(`[data-onboard-item="${onboarding.index}"]`)?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+async function runOnboardingSearch(query) {
+  const generation = ++state.onboarding.generation;
+  state.onboarding.loading = true;
+  state.onboarding.error = null;
+  state.onboarding.places = [];
+  renderOnboardingResults();
+  try {
+    const data = await searchPlaces(query);
+    if (generation !== state.onboarding.generation) return;
+    state.onboarding.places = (data?.results || []).map((place) => ({
+      id: place.id,
+      name: place.name,
+      state: place.state,
+      lat: place.lat,
+      lon: place.lon,
+    }));
+  } catch (error) {
+    if (generation !== state.onboarding.generation) return;
+    state.onboarding.error = usefulError(error);
+  } finally {
+    if (generation === state.onboarding.generation) {
+      state.onboarding.loading = false;
+      renderOnboardingResults();
+    }
+  }
+}
+
+function scheduleOnboardingSearch(query) {
+  if (state.onboarding.timer) clearTimeout(state.onboarding.timer);
+  state.onboarding.generation += 1;
+  if (normalizeSearch(query).length < 2) {
+    state.onboarding.places = [];
+    state.onboarding.error = null;
+    state.onboarding.loading = false;
+    renderOnboardingResults(true);
+    return;
+  }
+  state.onboarding.timer = setTimeout(() => runOnboardingSearch(query), 250);
+}
+
+function onboardingSetIndex(next) {
+  const items = state.onboarding.items;
+  if (!items.length) return;
+  state.onboarding.index = (next + items.length) % items.length;
+  const results = $('#onboardResults');
+  if (!results) return;
+  $$('[data-onboard-item]', results).forEach((item) => {
+    const active = Number(item.dataset.onboardItem) === state.onboarding.index;
+    item.classList.toggle('is-selected', active);
+    item.setAttribute('aria-selected', String(active));
+    if (active) item.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function chooseOnboardingCity(index) {
+  const item = state.onboarding.items[index];
+  if (!item) return;
+  const city = (item.remote ? registerCity(item.city) : null) || item.city;
+  if (city) finishOnboarding(city);
+}
+
+function onboardingSetStep(step) {
+  state.onboarding.step = step;
+  const overlay = $('#overlayRoot [data-overlay]');
+  if (!overlay) return;
+  $$('[data-onboard-step]', overlay).forEach((section) => {
+    section.hidden = Number(section.dataset.onboardStep) !== step;
+  });
+  $$('[data-onboard-dot]', overlay).forEach((dot) => {
+    dot.classList.toggle('is-active', Number(dot.dataset.onboardDot) <= step);
+  });
+  const label = $('#onboardProgressLabel', overlay);
+  if (label) label.textContent = step === 1 ? 'Begrüßung' : 'Dein Ort';
+  $('[data-onboard-skip]', overlay).hidden = step !== 1;
+  $('[data-onboard-next]', overlay).hidden = step !== 1;
+  $('[data-onboard-back]', overlay).hidden = step !== 2;
+  if (step === 2) {
+    renderOnboardingResults(true);
+    requestAnimationFrame(() => $('#onboardInput', overlay)?.focus({ preventScroll: true }));
+  } else {
+    requestAnimationFrame(() => $('[data-onboard-next]', overlay)?.focus({ preventScroll: true }));
+  }
+}
+
+function openOnboarding() {
+  if (state.onboardingOpen || !needsOnboarding()) return;
+  Object.assign(state.onboarding, {
+    step: 1, items: [], places: [], index: 0,
+    loading: false, error: null, generation: state.onboarding.generation + 1,
+  });
+  if (state.onboarding.timer) {
+    clearTimeout(state.onboarding.timer);
+    state.onboarding.timer = null;
+  }
+  const overlay = showOverlay(`<div class="modal onboarding-modal" role="dialog" aria-modal="true" aria-label="Brise einrichten">
+    <div class="onboarding-top">
+      <img src="./assets/logo.svg" alt="" class="onboarding-logo">
+      <div class="onboarding-top-copy">
+        <span class="onboarding-kicker">Willkommen bei Brise</span>
+        <h1 class="onboarding-title">Dein Wetter, dein Ort.</h1>
+        <p class="onboarding-subtitle">In zwei kurzen Schritten ist Brise für dich bereit.</p>
+      </div>
+    </div>
+    <div class="onboarding-progress" aria-hidden="true">
+      <span class="onboard-dot is-active" data-onboard-dot="1">1</span>
+      <i></i>
+      <span class="onboard-dot" data-onboard-dot="2">2</span>
+      <span class="onboarding-progress-label" id="onboardProgressLabel">Begrüßung</span>
+    </div>
+    <div class="onboarding-scroll">
+      <section class="onboarding-step" data-onboard-step="1">
+        <div class="onboard-features">
+          <div class="onboard-feature">
+            <span class="onboard-feature-icon">${icon('weather', 17)}</span>
+            <span><strong>Echte DWD-Daten</strong><small>Amtliche Messungen und Vorhersagen, kostenlos und ohne Anmeldung.</small></span>
+          </div>
+          <div class="onboard-feature">
+            <span class="onboard-feature-icon">${icon('pin', 17)}</span>
+            <span><strong>Jeder Ort in Deutschland</strong><small>Auch kleine Gemeinden und Stadtteile lassen sich hinzufügen.</small></span>
+          </div>
+          <div class="onboard-feature">
+            <span class="onboard-feature-icon">${icon('settings', 17)}</span>
+            <span><strong>Deine Darstellung</strong><small>Wähle zwischen dunklem und hellem Design. Du kannst alles später ändern.</small></span>
+          </div>
+        </div>
+        <div class="onboard-theme">
+          <span class="onboard-label">Darstellung</span>
+          <div class="onboard-theme-options">
+            <button type="button" class="onboard-theme-option${state.settings.theme !== 'day' ? ' is-active' : ''}" data-onboard-theme="night">Mitternacht</button>
+            <button type="button" class="onboard-theme-option${state.settings.theme === 'day' ? ' is-active' : ''}" data-onboard-theme="day">Tageslicht</button>
+          </div>
+        </div>
+      </section>
+      <section class="onboarding-step" data-onboard-step="2" hidden>
+        <label class="onboard-label" for="onboardInput">Welcher Ort soll dein Startort sein?</label>
+        <div class="onboard-search">
+          ${icon('search', 18)}
+          <input id="onboardInput" type="text" placeholder="Ort suchen, zum Beispiel Goslar …" autocomplete="off" spellcheck="false">
+        </div>
+        <p class="onboard-hint">Deutschlandweit suchen – auch kleine Gemeinden und Stadtteile.</p>
+        <div class="onboard-results" id="onboardResults" role="listbox" aria-label="Orte"></div>
+      </section>
+    </div>
+    <div class="onboarding-footer">
+      <button type="button" class="text-button" data-onboard-skip>Später einrichten</button>
+      <button type="button" class="text-button" data-onboard-back hidden>← Zurück</button>
+      <span class="onboard-footer-note">Keine Anmeldung. Kein API-Schlüssel.</span>
+      <button type="button" class="action-button primary" data-onboard-next>Weiter →</button>
+    </div>
+  </div>`, { locked: true, focusSelector: '[data-onboard-next]' });
+
+  if (!overlay) {
+    state.onboardingOpen = false;
+    return;
+  }
+
+  $('[data-onboard-next]', overlay).addEventListener('click', () => onboardingSetStep(2));
+  $('[data-onboard-back]', overlay).addEventListener('click', () => onboardingSetStep(1));
+  $('[data-onboard-skip]', overlay).addEventListener('click', () => finishOnboarding(null));
+  $$('[data-onboard-theme]', overlay).forEach((button) => {
+    button.addEventListener('click', () => {
+      state.settings.theme = button.dataset.onboardTheme;
+      persistSettings();
+      applyTheme();
+      $$('[data-onboard-theme]', overlay).forEach((other) => {
+        other.classList.toggle('is-active', other === button);
+      });
+    });
+  });
+
+  const input = $('#onboardInput', overlay);
+  const results = $('#onboardResults', overlay);
+  input.addEventListener('input', () => scheduleOnboardingSearch(input.value));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      onboardingSetIndex(state.onboarding.index + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      onboardingSetIndex(state.onboarding.index - 1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      chooseOnboardingCity(state.onboarding.index);
+    }
+  });
+  results.addEventListener('click', (event) => {
+    const item = event.target.closest('[data-onboard-item]');
+    if (item) chooseOnboardingCity(Number(item.dataset.onboardItem));
+  });
+  onboardingSetStep(1);
+}
+
+
 // ---------- Radar view ----------
 
 function radarFrameIsForecast(frame) {
@@ -2397,6 +2690,7 @@ function bindEvents() {
       return;
     }
     if (event.key === 'Escape') {
+      if (state.overlayLocked) return;
       if (state.overlayOpen) closeOverlay();
       else hideMapTooltip();
       return;
@@ -2447,6 +2741,7 @@ function startApp() {
   loadWeather(city.id);
   loadFavoriteSummaries();
   updateMaximizeIcon();
+  if (needsOnboarding()) openOnboarding();
 }
 
 startApp();
