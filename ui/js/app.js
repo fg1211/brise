@@ -703,7 +703,7 @@ function renderWeather() {
       ${metricTile('eye', 'Sichtweite', visibility, '', 'amtliche Messstation')}
       ${metricTile('thermometer', 'Taupunkt', dewPoint, '', 'Kondensationspunkt')}
       ${metricTile('cloud', 'Bewölkung', cloudCover === null ? '–' : cloudCover, '%', 'Wolkenbedeckung', cloudBar, 'violet')}
-      ${metricTile('sun', 'Sonne', finite(sunshineMinutes) ? Math.round(sunshineMinutes) : '–', 'Min.', finite(today?.dayMinutes) ? `von ${formatDuration(today.dayMinutes)} Tageslicht` : 'seit Sonnenaufgang', sunshineBar, 'warm')}
+      ${metricTile('sun', 'Sonnenschein', finite(sunshineMinutes) ? formatDuration(sunshineMinutes) : '–', '', finite(today?.dayMinutes) ? `Tageslicht: ${formatDuration(today.dayMinutes)}` : 'seit Sonnenaufgang', sunshineBar, 'warm')}
     </div>
   </aside>`;
 
