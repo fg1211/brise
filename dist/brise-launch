@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Brise launcher — keeps the window off the primary monitor on Hyprland/Wayland.
+# Set BRISE_MONITOR to override the target monitor (default: DP-2).
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN="${BRISE_BIN:-$here/brise}"
+MONITOR="${BRISE_MONITOR:-DP-2}"
+
+# On Hyprland, register the window rule *before* the app spawns so the window
+# never flashes up on the primary monitor (where a game may be running).
+if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+  hyprctl eval "hl.window_rule({name=\"brise-secondary\", match={class=\"brise\"}, monitor=\"$MONITOR\", float=true})" >/dev/null 2>&1 || true
+fi
+
+# Prefer the native Wayland backend; WebKitGTK renders sharper there and the
+# compositor keeps full control over placement.
+if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  export GDK_BACKEND=wayland
+fi
+
+exec "$BIN" "$@"

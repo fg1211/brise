@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Brise
+GenericName=Wetter
+Comment=Moderne DWD-Wetter-App für deutsche Städte
+Exec=brise-launch
+Icon=brise
+Terminal=false
+Categories=Science;
+Keywords=DWD;Vorhersage;Radar;Deutschland;Wetterbericht;
+StartupNotify=true
+StartupWMClass=brise

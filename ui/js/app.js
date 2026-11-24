@@ -1,0 +1,2452 @@
+import { icon, weatherIcon, weatherArt, moonPhaseIcon, windCompass } from './icons.js';
+import {
+  CITIES,
+  CITY_BY_ID,
+  DEFAULT_FAVORITES,
+  MAP_CITY_IDS,
+  normalizeSearch,
+  registerCity,
+  searchCities,
+} from './cities.js';
+import {
+  DEFAULT_SETTINGS,
+  TIME_ZONE,
+  buildModel,
+  cardinalDirection,
+  cardinalLong,
+  beaufort,
+  escapeHTML,
+  formatDateLong,
+  formatDateShort,
+  formatDuration,
+  formatPrecip,
+  formatRelative,
+  formatTemp,
+  formatTime,
+  formatWeekday,
+  formatWind,
+  iconForCondition,
+  iconLabel,
+  precipitationLabel,
+  solarTimes,
+  sunProgress,
+  tempValue,
+  visibilityValue,
+  windLabel,
+  windValue,
+} from './weather.js';
+import { renderTrendChart, renderDayChart } from './charts.js';
+import { fetchWeather, fetchSummaries, fetchRadar, searchPlaces } from './api.js';
+import { RadarRenderer, radarLegend } from './radar.js';
+import { GERMANY_GEO } from './germany-geo.js';
+
+const SETTINGS_KEY = 'brise.settings.v1';
+const FAVORITES_KEY = 'brise.favorites.v1';
+const CITY_KEY = 'brise.city.v1';
+
+const VIEW_IDS = new Set(['weather', 'radar', 'germany']);
+
+const SEARCH_COMMANDS = [
+  { id: 'radar', title: 'Regenradar öffnen', subtitle: 'Niederschlag und 90-Minuten-Prognose', icon: 'radar' },
+  { id: 'germany', title: 'Deutschlandkarte', subtitle: 'Wetter aller Regionen im direkten Vergleich', icon: 'map' },
+  { id: 'refresh', title: 'Wetterdaten aktualisieren', subtitle: 'Neue DWD-Beobachtungen laden', icon: 'refresh' },
+  { id: 'settings', title: 'Einstellungen', subtitle: 'Darstellung, Einheiten und Aktualisierung', icon: 'settings' },
+  { id: 'shortcuts', title: 'Tastenkürzel', subtitle: 'Alle Abkürzungen für Brise', icon: 'command' },
+  { id: 'about', title: 'Über Brise', subtitle: 'Datenquellen und Hintergründe', icon: 'info' },
+];
+
+const MAP_LABEL_OFFSET = {
+  duesseldorf: -24,
+  koeln: 27,
+  frankfurt: -24,
+  mainz: 28,
+  dortmund: 27,
+  muenster: -24,
+};
+
+const MAP_SCALES = {
+  temp: [[-10, '#4e83c4'], [0, '#5da9d8'], [8, '#7fd8c3'], [16, '#e4d17f'], [23, '#eda36a'], [32, '#e36b5e']],
+  wind: [[0, '#5a94bd'], [12, '#7fd8c3'], [25, '#e4d17f'], [42, '#eda36a'], [65, '#e36b5e']],
+  sun: [[0, '#596b7d'], [12, '#7ea7b4'], [30, '#e4d17f'], [50, '#ffd08b'], [60, '#ffca73']],
+};
+
+const state = {
+  settings: loadSettings(),
+  favorites: loadFavorites(),
+  selectedCityId: loadSelectedCity(),
+  summaries: new Map(),
+  weather: new Map(),
+  weatherSeq: new Map(),
+  weatherLoading: new Set(),
+  offline: new Set(),
+  favoriteSummariesLoading: false,
+  germanyLoading: false,
+  germanyLoadedAt: 0,
+  germanyError: null,
+  germanyMetric: 'temp',
+  radarLoading: false,
+  radarData: null,
+  radarStatus: 'idle',
+  radarError: null,
+  radarRenderer: null,
+  radarSeq: 0,
+  view: 'weather',
+  model: null,
+  trendRange: '48h',
+  searchItems: [],
+  searchIndex: 0,
+  remotePlaces: [],
+  remoteLoading: false,
+  remoteError: null,
+  remoteTimer: null,
+  searchGeneration: 0,
+  refreshTimer: null,
+  overlayOpen: false,
+};
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+const titleDateFormatter = new Intl.DateTimeFormat('de-DE', {
+  timeZone: TIME_ZONE,
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+});
+
+function finite(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function loadJSON(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    if (value === null) return fallback;
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Local storage may be disabled; the app still works for this session.
+  }
+}
+
+function loadSettings() {
+  const stored = loadJSON(SETTINGS_KEY, {});
+  const settings = { ...DEFAULT_SETTINGS, ...(stored && typeof stored === 'object' ? stored : {}) };
+  if (!['night', 'day', 'system'].includes(settings.theme)) settings.theme = DEFAULT_SETTINGS.theme;
+  if (!['c', 'f'].includes(settings.tempUnit)) settings.tempUnit = 'c';
+  if (!['kmh', 'ms', 'mph'].includes(settings.windUnit)) settings.windUnit = 'kmh';
+  if (!['mm', 'in'].includes(settings.precipUnit)) settings.precipUnit = 'mm';
+  if (!Number.isFinite(Number(settings.refreshMinutes)) || Number(settings.refreshMinutes) < 0) {
+    settings.refreshMinutes = DEFAULT_SETTINGS.refreshMinutes;
+  }
+  settings.refreshMinutes = Number(settings.refreshMinutes);
+  settings.animations = settings.animations !== false;
+  return settings;
+}
+
+function loadFavorites() {
+  const stored = loadJSON(FAVORITES_KEY, null);
+  if (!Array.isArray(stored)) return DEFAULT_FAVORITES.filter((id) => CITY_BY_ID[id]);
+  return [...new Set(stored.filter((id) => typeof id === 'string' && CITY_BY_ID[id]))];
+}
+
+function loadSelectedCity() {
+  const stored = loadJSON(CITY_KEY, null);
+  if (typeof stored === 'string' && CITY_BY_ID[stored]) return stored;
+  const favorites = loadFavorites();
+  return favorites[0] || 'berlin';
+}
+
+function persistSettings() {
+  saveJSON(SETTINGS_KEY, state.settings);
+}
+
+function persistFavorites() {
+  saveJSON(FAVORITES_KEY, state.favorites);
+}
+
+function persistSelectedCity() {
+  saveJSON(CITY_KEY, state.selectedCityId);
+}
+
+function currentCity() {
+  return CITY_BY_ID[state.selectedCityId] || CITY_BY_ID.berlin;
+}
+
+function isFavorite(cityId) {
+  return state.favorites.includes(cityId);
+}
+
+function summaryFor(cityId) {
+  return state.summaries.get(cityId) || null;
+}
+
+function summaryWeather(cityId) {
+  return summaryFor(cityId)?.weather || null;
+}
+
+function preferredTheme() {
+  if (state.settings.theme === 'system') {
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'day' : 'night';
+  }
+  return state.settings.theme;
+}
+
+function applyTheme() {
+  const theme = preferredTheme();
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.motion = state.settings.animations ? 'on' : 'off';
+  document.documentElement.style.colorScheme = theme === 'day' ? 'light' : 'dark';
+  const meta = $('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', theme === 'day' ? '#edf5f3' : '#081018');
+}
+
+function updateClock() {
+  const now = new Date();
+  const time = new Intl.DateTimeFormat('de-DE', {
+    timeZone: TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(now);
+  const titleTime = $('#titleTime');
+  const titleDate = $('#titleDate');
+  if (titleTime) titleTime.textContent = time;
+  if (titleDate) titleDate.textContent = titleDateFormatter.format(now).replace('.,', ',');
+}
+
+function setLiveState(mode, label) {
+  const pill = $('#livePill');
+  const text = $('#liveLabel');
+  if (pill) pill.dataset.state = mode;
+  if (text) text.textContent = label;
+}
+
+function showToast(message, options = {}) {
+  const host = $('#toastHost');
+  if (!host) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.dataset.tone = options.tone || 'info';
+  toast.innerHTML = `${icon(options.icon || (options.tone === 'alert' ? 'warning' : 'info'), 15)}<span>${escapeHTML(message)}</span>`;
+  host.append(toast);
+  window.setTimeout(() => {
+    toast.classList.add('is-leaving');
+    window.setTimeout(() => toast.remove(), 220);
+  }, options.duration || 3600);
+}
+
+let overlayReturnFocus = null;
+
+function closeOverlay() {
+  const root = $('#overlayRoot');
+  if (!root) return;
+  const hadOverlay = Boolean(root.firstElementChild);
+  root.innerHTML = '';
+  state.overlayOpen = false;
+  state.searchGeneration += 1;
+  if (state.remoteTimer) {
+    clearTimeout(state.remoteTimer);
+    state.remoteTimer = null;
+  }
+  if (hadOverlay && overlayReturnFocus?.isConnected) {
+    try { overlayReturnFocus.focus({ preventScroll: true }); } catch { /* noop */ }
+  }
+  overlayReturnFocus = null;
+}
+
+function showOverlay(markup, options = {}) {
+  const root = $('#overlayRoot');
+  if (!root) return null;
+  if (!state.overlayOpen) overlayReturnFocus = document.activeElement;
+  root.innerHTML = `<div class="overlay" data-overlay>${markup}</div>`;
+  state.overlayOpen = true;
+  const overlay = $('[data-overlay]', root);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay || event.target.closest('[data-close]')) {
+      closeOverlay();
+    }
+  });
+  const focusSelector = options.focusSelector || 'input, select, button';
+  requestAnimationFrame(() => {
+    const focusTarget = overlay.querySelector(focusSelector);
+    if (focusTarget) {
+      try { focusTarget.focus({ preventScroll: true }); } catch { /* noop */ }
+    }
+  });
+  if (options.onMount) options.onMount(overlay);
+  return overlay;
+}
+
+function usefulError(error) {
+  if (typeof error === 'string') return error;
+  if (error?.message) return error.message;
+  return 'Unbekannter Fehler bei der Datenabfrage.';
+}
+
+function formatAlertPeriod(alert) {
+  const parts = [];
+  if (alert.onset) parts.push(`ab ${formatWeekday(alert.onset, true)} ${formatTime(alert.onset)} Uhr`);
+  if (alert.expires) parts.push(`bis ${formatWeekday(alert.expires, true)} ${formatTime(alert.expires)} Uhr`);
+  return parts.length ? parts.join(' · ') : 'Zeitpunkt unbekannt';
+}
+
+function formatAlertExpiry(alert) {
+  return alert.expires ? `bis ${formatWeekday(alert.expires, true)} ${formatTime(alert.expires)}` : 'aktuell aktiv';
+}
+
+function cityNight(city) {
+  const sun = solarTimes(new Date(), city.lat, city.lon);
+  if (!sun.sunrise || !sun.sunset) return false;
+  const now = new Date();
+  return now < sun.sunrise || now >= sun.sunset;
+}
+
+function summaryIconName(city, weather) {
+  if (!weather) return 'cloudy';
+  if (weather.icon) return String(weather.icon);
+  return iconForCondition(weather.condition || 'dry', weather.cloud_cover, cityNight(city));
+}
+
+function summaryLabel(city, weather) {
+  if (!weather) return 'Keine Daten';
+  return iconLabel(summaryIconName(city, weather), weather.condition || '');
+}
+
+function formatUpdated(value) {
+  return formatRelative(value instanceof Date ? value : new Date(value));
+}
+
+function formatDateWithWeekday(value) {
+  return `${formatWeekday(value)}, ${formatDateShort(value)}`;
+}
+
+function alertSeverityClass(severity) {
+  if (severity === 'extreme' || severity === 'severe') return 'pill-alert';
+  if (severity === 'moderate') return 'pill-warm';
+  return 'pill-muted';
+}
+
+function summaryFromBundle(city, bundle) {
+  return {
+    city_id: city.id,
+    name: city.name,
+    state: city.state,
+    fetched_at: bundle.fetched_at || Math.floor(Date.now() / 1000),
+    stale: Boolean(bundle.stale),
+    weather: bundle.current || {},
+    sources: bundle.current_sources || [],
+    alerts_available: bundle.alerts_available !== false,
+  };
+}
+
+function applySummaries(results) {
+  for (const result of results || []) {
+    if (!result?.city_id || !CITY_BY_ID[result.city_id]) continue;
+    if (result.weather) {
+      const existing = state.summaries.get(result.city_id);
+      if (!existing || (result.fetched_at || 0) >= (existing.fetched_at || 0)) {
+        state.summaries.set(result.city_id, result);
+      }
+    } else if (!state.summaries.has(result.city_id)) {
+      state.summaries.set(result.city_id, result);
+    }
+  }
+}
+
+function cacheBundleSummary(city, bundle) {
+  if (!bundle?.current || !Object.keys(bundle.current).length) return;
+  const summary = summaryFromBundle(city, bundle);
+  const existing = state.summaries.get(city.id);
+  if (!existing || (summary.fetched_at || 0) >= (existing.fetched_at || 0)) {
+    state.summaries.set(city.id, summary);
+  }
+}
+
+function metricBarWidth(value, max = 100) {
+  return `${clamp((value / max) * 100, 0, 100).toFixed(1)}%`;
+}
+
+function formatPressure(value) {
+  return finite(value) ? `${Math.round(value)}` : '–';
+}
+
+function formatVisibilityLine(meters) {
+  return visibilityValue(meters) || '–';
+}
+
+function splitNumericUnit(value, unit) {
+  if (value === '–' || value === null || value === undefined) return { value: '–', unit: '' };
+  return { value, unit };
+}
+
+function instantHourLabel(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return `${formatWeekday(date, true)}, ${formatDateShort(date)} · ${formatTime(date)}`;
+}
+
+function setPageLive(stale) {
+  if (stale) setLiveState('stale', 'Offline-Daten');
+  else setLiveState('live', 'DWD aktuell');
+}
+
+
+async function loadWeather(cityId, options = {}) {
+  const city = CITY_BY_ID[cityId];
+  if (!city) return false;
+  const force = Boolean(options.force);
+  const quiet = Boolean(options.quiet);
+  const seq = (state.weatherSeq.get(cityId) || 0) + 1;
+  state.weatherSeq.set(cityId, seq);
+  state.weatherLoading.add(cityId);
+
+  if (state.selectedCityId === cityId && state.view === 'weather') {
+    const existing = state.weather.get(cityId);
+    if (!existing) {
+      renderWeatherLoading(city);
+      setLiveState('loading', 'DWD lädt');
+    } else {
+      $('#refreshWeather')?.classList.add('is-loading');
+      const indicator = $('#weatherUpdated');
+      if (indicator && !quiet) indicator.textContent = 'Wird aktualisiert …';
+      if (!quiet) setLiveState('loading', 'DWD lädt');
+    }
+  }
+
+  try {
+    const bundle = await fetchWeather(city, force);
+    if (state.weatherSeq.get(cityId) !== seq) return false;
+    state.offline.delete(cityId);
+    state.weather.set(cityId, { bundle, at: Date.now() });
+    cacheBundleSummary(city, bundle);
+    if (state.view === 'weather' && state.selectedCityId === cityId) {
+      renderWeather();
+      setPageLive(Boolean(bundle.stale));
+    } else if (state.view === 'germany' && MAP_CITY_IDS.includes(cityId)) {
+      renderGermanyView();
+    }
+    renderFavorites();
+    return true;
+  } catch (error) {
+    if (state.weatherSeq.get(cityId) !== seq) return false;
+    if (state.selectedCityId === cityId && state.view === 'weather') {
+      const existing = state.weather.get(cityId);
+      if (existing) {
+        state.offline.add(cityId);
+        renderWeather();
+        setLiveState('stale', 'Offline-Daten');
+        showToast('Keine Verbindung zum DWD. Brise zeigt die zuletzt geladenen Daten.', { tone: 'warn', icon: 'cloud' });
+      } else {
+        renderWeatherError(city, error);
+        setLiveState('error', 'DWD nicht erreichbar');
+      }
+    }
+    if (!quiet) console.warn('Brise: Wetter konnte nicht geladen werden', error);
+    return false;
+  } finally {
+    state.weatherLoading.delete(cityId);
+    $('#refreshWeather')?.classList.remove('is-loading');
+    if (state.view === 'weather' && state.selectedCityId === cityId && state.weather.has(cityId)) {
+      const indicator = $('#weatherUpdated');
+      if (indicator) {
+        const entry = state.weather.get(cityId);
+        indicator.textContent = state.offline.has(cityId) || entry?.bundle?.stale
+          ? 'Offline-Daten'
+          : `Aktualisiert ${formatRelative(new Date(entry?.bundle?.fetched_at ? entry.bundle.fetched_at * 1000 : entry?.at || Date.now()))}`;
+      }
+    }
+  }
+}
+
+async function loadFavoriteSummaries(force = false) {
+  const cities = state.favorites.map((id) => CITY_BY_ID[id]).filter(Boolean);
+  if (!cities.length) {
+    renderFavorites();
+    return;
+  }
+  if (state.favoriteSummariesLoading) return;
+  state.favoriteSummariesLoading = true;
+  try {
+    const results = await fetchSummaries(cities, force);
+    applySummaries(results);
+  } catch (error) {
+    console.warn('Brise: Favoriten konnten nicht aktualisiert werden', error);
+    if (force) showToast('Die Ortsübersicht konnte nicht aktualisiert werden.', { tone: 'warn', icon: 'cloud' });
+  } finally {
+    state.favoriteSummariesLoading = false;
+    renderFavorites();
+  }
+}
+
+function renderFavorites() {
+  const list = $('#favoritesList');
+  const count = $('#favoriteCount');
+  if (count) count.textContent = String(state.favorites.length);
+  if (!list) return;
+  if (!state.favorites.length) {
+    list.innerHTML = `<div class="favorite-empty">Noch keine Orte gespeichert. Suche nach einer deutschen Stadt und tippe auf den Stern.</div>`;
+    return;
+  }
+  list.innerHTML = state.favorites
+    .map((id) => {
+      const city = CITY_BY_ID[id];
+      if (!city) return '';
+      const weather = summaryWeather(id);
+      const rawTemp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '–';
+      const weatherIconMarkup = weather
+        ? weatherIcon(summaryIconName(city, weather))
+        : icon('pin', 16);
+      const stateText = weather
+        ? `${summaryLabel(city, weather)}`
+        : (summaryFor(id)?.error ? 'Nicht erreichbar' : 'Wird geladen …');
+      return `<div class="favorite-row ${id === state.selectedCityId ? 'is-active' : ''}" data-favorite-city="${id}" role="button" tabindex="0" aria-label="${escapeHTML(city.name)}, ${escapeHTML(rawTemp)}" aria-current="${id === state.selectedCityId ? 'true' : 'false'}">
+        <span class="favorite-row-main">
+          <span class="favorite-icon">${weatherIconMarkup}</span>
+          <span class="favorite-copy">
+            <span class="favorite-name">${escapeHTML(city.name)}</span>
+            <span class="favorite-state">${escapeHTML(stateText)}</span>
+          </span>
+        </span>
+        <span class="favorite-temp">${escapeHTML(rawTemp)}</span>
+        <button class="favorite-remove" type="button" data-remove-favorite="${id}" title="${escapeHTML(city.name)} entfernen" aria-label="${escapeHTML(city.name)} aus Favoriten entfernen">${icon('x', 11)}</button>
+      </div>`;
+    })
+    .join('');
+}
+
+function weatherToolbarMarkup(city) {
+  return `<div class="weather-toolbar">
+    <div class="weather-context">
+      ${icon('pin', 12)}
+      <span>Deutschland</span>
+      <span class="context-sep">/</span>
+      <strong>${escapeHTML(city.name)}</strong>
+      <span class="context-state">${escapeHTML(city.state)}</span>
+    </div>
+    <div class="weather-toolbar-side">
+      <span class="update-indicator" id="weatherUpdated" data-stale="false"><i class="live-dot"></i>Daten werden geladen</span>
+      <button class="icon-button refresh-button" id="refreshWeather" type="button" data-refresh-weather aria-label="Wetter aktualisieren" title="Wetter aktualisieren">${icon('refresh', 14)}</button>
+    </div>
+  </div>`;
+}
+
+function renderWeatherLoading(city) {
+  const container = $('#weatherContent');
+  if (!container) return;
+  container.innerHTML = `${weatherToolbarMarkup(city)}
+    <div class="view-loading">
+      <span class="loader-orbit"></span>
+      <span>Der Himmel über ${escapeHTML(city.name)} wird geladen …</span>
+    </div>`;
+}
+
+function renderWeatherError(city, error) {
+  const container = $('#weatherContent');
+  if (!container) return;
+  container.innerHTML = `${weatherToolbarMarkup(city)}
+    <div class="error-card">
+      <span class="error-card-icon">${icon('cloud', 18)}</span>
+      <div class="error-card-copy">
+        <div class="error-card-title">Der DWD antwortet gerade nicht</div>
+        <div class="error-card-text">Für ${escapeHTML(city.name)} konnten keine amtlichen Wetterdaten geladen werden. Prüfe deine Internetverbindung und versuche es erneut.<br><code>${escapeHTML(usefulError(error))}</code></div>
+        <div class="error-actions"><button class="action-button" type="button" data-retry-weather>${icon('refresh', 13)} Erneut versuchen</button></div>
+      </div>
+    </div>`;
+}
+
+function metricTile(iconName, label, value, unit, sub, barPercent = null, tone = '') {
+  return `<div class="metric-tile">
+    <span class="metric-head">${icon(iconName, 11)} ${escapeHTML(label)}</span>
+    <span class="metric-value">${escapeHTML(String(value))}${unit ? `<small>${escapeHTML(unit)}</small>` : ''}</span>
+    ${barPercent === null ? '' : `<span class="metric-bar ${tone}"><i style="width:${barPercent}"></i></span>`}
+    ${sub ? `<span class="metric-sub">${escapeHTML(sub)}</span>` : ''}
+  </div>`;
+}
+
+function renderWeather() {
+  const container = $('#weatherContent');
+  if (!container) return;
+  const city = currentCity();
+  const entry = state.weather.get(city.id);
+  if (!entry) {
+    renderWeatherLoading(city);
+    return;
+  }
+  const model = buildModel(entry.bundle, city, state.settings);
+  if (state.offline.has(city.id)) model.stale = true;
+  state.model = model;
+
+  const current = model.current;
+  const sun = model.sun;
+  const moon = model.moon;
+  const alerts = model.alerts;
+  const today = model.today;
+  const favorite = isFavorite(city.id);
+  const temp = formatTemp(current.tempC, state.settings.tempUnit);
+  const feels = formatTemp(current.apparentC, state.settings.tempUnit);
+  const high = formatTemp(today?.high, state.settings.tempUnit);
+  const low = formatTemp(today?.low, state.settings.tempUnit);
+  const stale = model.stale;
+  const updatedLabel = stale ? 'Offline-Daten' : `Aktualisiert ${formatUpdated(model.fetchedAt)}`;
+  const stationName = model.station?.station_name || model.station?.id || 'DWD-Messstation';
+  const observed = `${formatTime(model.observedAt)} Uhr`;
+  const daylightProgress = Math.round(sunProgress(new Date(), sun.sunrise, sun.sunset) * 100);
+  const sunrise = sun.sunrise ? formatTime(sun.sunrise) : '–';
+  const sunset = sun.sunset ? formatTime(sun.sunset) : '–';
+  const dayLength = sun.dayMinutes > 0 ? formatDuration(sun.dayMinutes) : '–';
+  const rainStart = model.rainOutlook.startsAt ? formatTime(model.rainOutlook.startsAt) : null;
+  const currentHumidity = finite(current.humidity) ? Math.round(current.humidity) : null;
+  const visibility = formatVisibilityLine(current.visibility);
+  const pressure = model.pressure;
+  const sunshineMinutes = today?.sunshineMinutes;
+  const cloudCover = finite(current.cloudCover) ? Math.round(current.cloudCover) : null;
+  const dewPoint = formatTemp(current.dewPoint, state.settings.tempUnit);
+  const windText = formatWind(current.windSpeed, state.settings.windUnit, 0);
+  const gustText = finite(current.gustSpeed) ? formatWind(current.gustSpeed, state.settings.windUnit, 0) : '–';
+  const windDir = finite(current.windDirection) ? `${cardinalDirection(current.windDirection)} · ${cardinalLong(current.windDirection)}` : 'Richtung unbekannt';
+  const bft = beaufort(current.windSpeed);
+  const weatherFamily = current.family || 'cloudy';
+
+  const alertBanner = alerts.length
+    ? `<button class="alert-banner" type="button" data-open-alerts>
+        <span class="alert-banner-icon">${icon('warning', 15)}</span>
+        <span class="alert-banner-copy">
+          <strong>${alerts.length === 1 ? 'Amtliche Wetterwarnung' : `${alerts.length} amtliche Wetterwarnungen`}</strong>
+          <span>${escapeHTML(alerts[0].event)}: ${escapeHTML(alerts[0].headline)}</span>
+        </span>
+        <span class="alert-banner-meta">${icon('clock', 12)} ${escapeHTML(formatAlertExpiry(alerts[0]))} ${icon('chevronRight', 12)}</span>
+      </button>`
+    : '';
+
+  const heroWarning = alerts.length
+    ? `<button class="pill hero-warning-chip" type="button" data-open-alerts>${icon('warning', 11)} ${alerts.length} ${alerts.length === 1 ? 'Warnung' : 'Warnungen'}</button>`
+    : '';
+
+  const hero = `<article class="card hero-card" data-family="${weatherFamily}">
+    <div class="hero-scene">${weatherArt(current.icon, model.nightNow)}</div>
+    <div class="hero-content">
+      <div class="hero-topline">
+        <span class="pill hero-live">${icon('sparkles', 11)} ${stale ? 'Offline-Daten' : 'DWD aktuell'}</span>
+        <span class="hero-dateline">${escapeHTML(formatDateLong(model.observedAt))}</span>
+        ${heroWarning}
+        <span class="spacer"></span>
+        <button class="hero-favorite ${favorite ? 'is-favorite' : ''}" type="button" data-toggle-favorite="${city.id}" aria-label="${favorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}" title="${favorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}">${icon(favorite ? 'starFilled' : 'star', 14)}</button>
+      </div>
+      <div class="hero-place">
+        ${icon('pin', 15)}
+        <h2>${escapeHTML(city.name)}</h2>
+        <span class="hero-state">${escapeHTML(city.state)}</span>
+      </div>
+      <div class="hero-reading">
+        <div class="hero-temp">${escapeHTML(temp)}</div>
+        <div class="hero-weather-copy">
+          <div class="hero-condition">${weatherIcon(current.icon)} ${escapeHTML(current.label)}</div>
+          <div class="hero-feels">Gefühlt <strong>${escapeHTML(feels)}</strong><span class="dot-separator"></span>Luftfeuchte ${currentHumidity === null ? '–' : `${currentHumidity} %`}</div>
+          <div class="hero-highlow"><span><span class="arrow-up">↑</span> ${escapeHTML(high)}</span><span><span class="arrow-down">↓</span> ${escapeHTML(low)}</span><span class="dot-separator"></span><span>${escapeHTML(windText)}</span></div>
+        </div>
+      </div>
+      <div class="hero-footer">
+        <div class="hero-outlook">
+          <span class="hero-outlook-icon">${icon(rainStart ? 'umbrella' : 'sun', 14)}</span>
+          <span class="hero-outlook-copy">
+            <span>${rainStart ? 'Regen im Blick' : 'Nächste Stunden'}</span>
+            <p>${escapeHTML(rainStart ? `Ab ${rainStart} Uhr wird Regen wahrscheinlich.` : 'Voraussichtlich trocken — ruhiges Wetter in Sicht.')}</p>
+          </span>
+        </div>
+        <div class="hero-observation">
+          <strong>${escapeHTML(stationName)}</strong>
+          ${escapeHTML(observed)} · ${escapeHTML(updatedLabel)}
+        </div>
+      </div>
+    </div>
+  </article>`;
+
+  const windDirectionIcon = finite(current.windDirection) ? 'navigation' : 'compass';
+  const humidityBar = currentHumidity === null ? null : metricBarWidth(currentHumidity);
+  const cloudBar = cloudCover === null ? null : metricBarWidth(cloudCover);
+  const sunshineBar = finite(today?.dayMinutes) && today.dayMinutes > 0 && finite(sunshineMinutes)
+    ? metricBarWidth((sunshineMinutes / today.dayMinutes) * 100)
+    : null;
+  const nowCard = `<aside class="card now-card">
+    <header class="card-head">
+      <div class="card-heading">
+        <p class="kicker">Aktuelle Messung</p>
+        <h3 class="card-title">Jetzt</h3>
+      </div>
+      <span class="now-live"><i></i>${formatTime(model.observedAt)} Uhr</span>
+    </header>
+    <div class="wind-block">
+      ${windCompass(current.windDirection || 0)}
+      <div class="wind-copy">
+        <div class="wind-value"><strong>${escapeHTML(windText.split(' ')[0])}</strong><span>${escapeHTML(windText.split(' ').slice(1).join(' '))}</span></div>
+        <div class="wind-direction">${icon(windDirectionIcon, 11)} ${escapeHTML(windDir)}</div>
+        <div class="wind-gust">
+          <span>Böen <b>${escapeHTML(gustText)}</b></span>
+          ${bft === null ? '' : `<span>Beaufort <b>${bft}</b></span>`}
+        </div>
+      </div>
+    </div>
+    <div class="now-metrics">
+      ${metricTile('droplet', 'Luftfeuchte', currentHumidity === null ? '–' : currentHumidity, '%', 'relative Feuchte', humidityBar, 'sky')}
+      ${metricTile('gauge', 'Luftdruck', formatPressure(pressure.value), 'hPa', `Tendenz ${pressure.label}`)}
+      ${metricTile('eye', 'Sichtweite', visibility, '', 'amtliche Messstation')}
+      ${metricTile('thermometer', 'Taupunkt', dewPoint, '', 'Kondensationspunkt')}
+      ${metricTile('cloud', 'Bewölkung', cloudCover === null ? '–' : cloudCover, '%', 'Wolkenbedeckung', cloudBar, 'violet')}
+      ${metricTile('sun', 'Sonne', finite(sunshineMinutes) ? Math.round(sunshineMinutes) : '–', 'Min.', finite(today?.dayMinutes) ? `von ${formatDuration(today.dayMinutes)} Tageslicht` : 'seit Sonnenaufgang', sunshineBar, 'warm')}
+    </div>
+  </aside>`;
+
+
+  const weekValues = [];
+  for (const day of model.daily) {
+    if (finite(day.low)) weekValues.push(tempValue(day.low, state.settings.tempUnit));
+    if (finite(day.high)) weekValues.push(tempValue(day.high, state.settings.tempUnit));
+  }
+  const weekMin = weekValues.length ? Math.min(...weekValues) : 0;
+  const weekMax = weekValues.length ? Math.max(...weekValues) : 1;
+  const weekSpan = Math.max(1, weekMax - weekMin);
+
+  const forecastRows = model.daily
+    .map((day) => {
+      const lowValue = tempValue(day.low, state.settings.tempUnit);
+      const highValue = tempValue(day.high, state.settings.tempUnit);
+      const start = clamp(((lowValue - weekMin) / weekSpan) * 100, 0, 100);
+      const end = clamp(((highValue - weekMin) / weekSpan) * 100, 0, 100);
+      const width = Math.max(8, end - start);
+      const rain = Number.isFinite(day.probMax) ? `${Math.round(day.probMax)} %` : (day.precipSum > 0 ? formatPrecip(day.precipSum, state.settings.precipUnit) : 'trocken');
+      const rainClass = !Number.isFinite(day.probMax) || day.probMax < 20 ? 'is-dry' : '';
+      return `<button class="forecast-row ${day.isToday ? 'is-today' : ''}" type="button" data-day-key="${day.key}" aria-label="${escapeHTML(day.labelDay)}: ${escapeHTML(formatTemp(day.low, state.settings.tempUnit))} bis ${escapeHTML(formatTemp(day.high, state.settings.tempUnit))}, ${escapeHTML(day.label)}">
+        <span class="fc-day"><strong>${escapeHTML(day.labelDay)}</strong><span>${escapeHTML(formatDateShort(day.date))}</span></span>
+        <span class="fc-icon">${weatherIcon(day.icon)}</span>
+        <span class="fc-condition"><strong>${escapeHTML(day.label)}</strong><span class="fc-rain ${rainClass}">${icon('droplet', 8)} ${escapeHTML(rain)}</span></span>
+        <span class="fc-bar"><span class="fc-bar-fill" style="left:${start.toFixed(1)}%;width:${width.toFixed(1)}%"></span></span>
+        <span class="fc-low">${escapeHTML(formatTemp(day.low, state.settings.tempUnit))}</span>
+        <span class="fc-high">${escapeHTML(formatTemp(day.high, state.settings.tempUnit))}</span>
+      </button>`;
+    })
+    .join('');
+
+  const sunAngle = Math.PI - Math.PI * clamp(daylightProgress / 100, 0, 1);
+  const sunDotX = 160 + 116 * Math.cos(sunAngle);
+  const sunDotY = 124 - 116 * Math.sin(sunAngle);
+  const sunProgressPath = daylightProgress > 0
+    ? `M 44 124 A 116 116 0 0 ${daylightProgress > 50 ? 1 : 0} ${sunDotX.toFixed(2)} ${sunDotY.toFixed(2)}`
+    : '';
+  const nightProgress = daylightProgress >= 100 ? 0 : daylightProgress;
+
+  const trendCard = `<section class="card trend-card">
+    <header class="card-head">
+      <div class="card-heading">
+        <p class="kicker">Vorhersage</p>
+        <h3 class="card-title">Temperatur & Regen</h3>
+      </div>
+      <div class="segmented" role="group" aria-label="Zeitraum wählen">
+        <button type="button" data-range="24h" class="${state.trendRange === '24h' ? 'is-active' : ''}">24 Std.</button>
+        <button type="button" data-range="48h" class="${state.trendRange === '48h' ? 'is-active' : ''}">48 Std.</button>
+        <button type="button" data-range="7d" class="${state.trendRange === '7d' ? 'is-active' : ''}">7 Tage</button>
+      </div>
+    </header>
+    <div class="trend-chart-container" id="trendChart"></div>
+    <div class="hourly-rail">
+      <div class="hourly-rail-head">
+        <span class="hourly-rail-title">Stündlich</span>
+        <span class="hourly-rail-hint">Regenwahrscheinlichkeit in %</span>
+      </div>
+      <div class="hourly-scroll">
+        ${model.hourlyRail.map((hour, index) => {
+          const prob = Number.isFinite(hour.prob) ? `${Math.round(hour.prob)}%` : (hour.precip > 0 ? formatPrecip(hour.precip, state.settings.precipUnit) : '–');
+          const dry = !Number.isFinite(hour.prob) || hour.prob < 20;
+          return `<div class="hour-item ${index === 0 ? 'is-now' : ''}" title="${escapeHTML(instantHourLabel(hour.timestamp))} · ${escapeHTML(hour.label)}">
+            <span class="hour-time">${index === 0 ? 'Jetzt' : formatTime(hour.timestamp)}</span>
+            <span class="hour-icon">${weatherIcon(hour.icon)}</span>
+            <span class="hour-temp">${escapeHTML(formatTemp(hour.tempC, state.settings.tempUnit))}</span>
+            <span class="hour-rain ${dry ? 'is-dry' : ''}">${icon('droplet', 8)} ${escapeHTML(prob)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </section>`;
+
+  const sunCard = `<section class="card sun-card">
+    <header class="card-head">
+      <div class="card-heading">
+        <p class="kicker">Tageslicht</p>
+        <h3 class="card-title">Sonne & Mond</h3>
+      </div>
+      <span class="pill pill-muted">${nightProgress >= 100 ? 'Sonne ist untergegangen' : nightProgress <= 0 ? 'Vor Sonnenaufgang' : `${daylightProgress} % des Tages`}</span>
+    </header>
+    <div class="sun-arc">
+      <svg viewBox="0 0 320 140" role="img" aria-label="Sonnenstand im Tagesverlauf">
+        <defs>
+          <linearGradient id="sunArcGradient" x1="44" y1="124" x2="276" y2="124" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#ffd08b" stop-opacity=".3"/>
+            <stop offset=".45" stop-color="#ffd08b"/>
+            <stop offset="1" stop-color="#7deed3"/>
+          </linearGradient>
+          <linearGradient id="sunArcFill" x1="160" y1="8" x2="160" y2="124" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#ffd08b" stop-opacity=".12"/>
+            <stop offset="1" stop-color="#7deed3" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <line class="sun-arc-horizon" x1="18" y1="124" x2="302" y2="124"/>
+        <path class="sun-arc-fill" d="M 44 124 A 116 116 0 0 1 276 124 Z"/>
+        <path class="sun-arc-path" d="M 44 124 A 116 116 0 0 1 276 124"/>
+        ${sunProgressPath ? `<path class="sun-arc-progress" d="${sunProgressPath}"/>` : ''}
+        <circle class="sun-arc-dot" cx="${sunDotX.toFixed(2)}" cy="${sunDotY.toFixed(2)}" r="4.5"/>
+        <circle cx="48" cy="128" r="1.7" fill="rgba(255,208,139,.7)"/>
+        <circle cx="272" cy="128" r="1.7" fill="rgba(192,170,255,.7)"/>
+      </svg>
+    </div>
+    <div class="sun-times">
+      <div class="sun-time">
+        <span class="sun-time-icon">${icon('sunrise', 14)}</span>
+        <span class="sun-time-copy"><span>Sonnenaufgang</span><strong>${sunrise}</strong></span>
+      </div>
+      <div class="sun-time">
+        <span class="sun-time-icon dusk">${icon('sunset', 14)}</span>
+        <span class="sun-time-copy"><span>Sonnenuntergang</span><strong>${sunset}</strong></span>
+      </div>
+    </div>
+    <div class="daylight-row">
+      <div class="daylight-caption"><span>Tageslicht</span><strong>${dayLength}</strong></div>
+      <div class="daylight-line"><i style="width:${clamp(daylightProgress, 2, 100)}%"></i></div>
+      <div class="daylight-caption"><span>${formatTime(sun.sunrise)}</span><span>${formatTime(sun.sunset)}</span></div>
+    </div>
+    <div class="moon-row">
+      <span class="moon-icon-wrap">${moonPhaseIcon(moon.illumination, 28)}</span>
+      <span class="moon-copy"><strong>${escapeHTML(moon.name)}</strong><span>${moon.waxing ? 'zunehmend' : 'abnehmend'} · ${Math.round(moon.age)} Tage alt</span></span>
+      <span class="moon-percent">${moon.percent}<span class="moon-unit">%</span></span>
+    </div>
+  </section>`;
+
+  const alertCard = `<article class="card alerts-card">
+    <header class="card-head">
+      <div class="card-heading">
+        <p class="kicker">DWD-Warnlage</p>
+        <h3 class="card-title">Amtliche Warnungen</h3>
+      </div>
+      ${alerts.length ? `<button class="card-link" type="button" data-open-alerts>Alle ${alerts.length} ${icon('chevronRight', 12)}</button>` : ''}
+    </header>
+    ${alerts.length ? `<div class="mini-alerts">${alerts.slice(0, 2).map((alert) => `<button class="mini-alert" type="button" data-open-alerts>
+        <span class="mini-alert-dot" style="background:${alert.severityRank >= 3 ? 'var(--alert)' : 'var(--warm)'}"></span>
+        <span class="mini-alert-copy">
+          <span class="mini-alert-title">${escapeHTML(alert.event)}: ${escapeHTML(alert.headline)}</span>
+          <span class="mini-alert-meta">${escapeHTML(alert.severityLabel)} · ${escapeHTML(formatAlertExpiry(alert))}</span>
+        </span>
+        ${icon('chevronRight', 11)}
+      </button>`).join('')}</div>` : `<div class="alert-safe">
+        <span class="alert-safe-icon">${icon('info', 14)}</span>
+        <p><strong>Keine aktiven Warnungen</strong>${model.alertsAvailable ? 'Der DWD meldet für diese Region derzeit keine amtliche Wetterwarnung.' : 'Die Warnlage konnte gerade nicht abgerufen werden.'}</p>
+      </div>`}
+  </article>`;
+
+  const tip = model.tip;
+  const sideStack = `<div class="side-stack">
+    <article class="card tip-card" data-tone="${escapeHTML(tip.tone || 'neutral')}">
+      <div class="tip-head">
+        <span class="tip-icon">${icon(tip.icon || 'sparkles', 14)}</span>
+        <span class="tip-eyebrow">Brise-Tipp</span>
+      </div>
+      <h3 class="tip-title">${escapeHTML(tip.title)}</h3>
+      <p class="tip-text">${escapeHTML(tip.text)}</p>
+    </article>
+    ${alertCard}
+    <button class="radar-teaser" type="button" data-open-radar>
+      <span class="radar-teaser-art"></span>
+      <span class="radar-teaser-copy">
+        <span class="radar-teaser-eyebrow">${icon('radar', 11)} DWD-Radar</span>
+        <h3>Regenradar</h3>
+        <p>${escapeHTML(rainStart ? `Die nächsten Tropfen erreichen ${city.name} gegen ${rainStart} Uhr.` : `Behalte Regen und Schnee über ${city.name} im animierten 90-Minuten-Radar im Blick.`)}</p>
+        <span class="radar-teaser-cta">Animierte Vorschau ${icon('arrowUpRight', 11)}</span>
+      </span>
+    </button>
+  </div>`;
+
+  container.innerHTML = `${weatherToolbarMarkup(city)}
+    <div class="dashboard">
+      ${alertBanner}
+      ${hero}
+      ${nowCard}
+      ${trendCard}
+      ${sunCard}
+      <section class="card forecast-card">
+        <header class="card-head">
+          <div class="card-heading">
+            <p class="kicker">Ausblick</p>
+            <h3 class="card-title">Die nächsten 7 Tage</h3>
+          </div>
+          <span class="pill pill-muted">${escapeHTML(city.name)}</span>
+        </header>
+        <div class="forecast-list">${forecastRows}</div>
+        <div class="forecast-footnote">${icon('info', 10)} Wähle einen Tag für die Stundenübersicht und Details aus.</div>
+      </section>
+      ${sideStack}
+    </div>`;
+
+  const updateIndicator = $('#weatherUpdated');
+  if (updateIndicator) {
+    updateIndicator.dataset.stale = String(stale);
+    updateIndicator.innerHTML = `<i class="live-dot"></i>${escapeHTML(updatedLabel)}`;
+    updateIndicator.title = `Letzte Abfrage: ${formatTime(model.fetchedAt)} Uhr`;
+  }
+  renderTrendChart($('#trendChart'), model, state.trendRange, state.settings);
+  setPageLive(stale);
+}
+
+function toggleFavorite(cityId) {
+  const city = CITY_BY_ID[cityId];
+  if (!city) return;
+  if (isFavorite(cityId)) {
+    state.favorites = state.favorites.filter((id) => id !== cityId);
+    persistFavorites();
+    showToast(`${city.name} aus den Favoriten entfernt.`, { icon: 'star' });
+  } else {
+    state.favorites = [...state.favorites, cityId];
+    persistFavorites();
+    showToast(`${city.name} zu den Favoriten hinzugefügt.`, { icon: 'starFilled' });
+    loadFavoriteSummaries();
+  }
+  renderFavorites();
+  if (state.view === 'weather' && state.model) renderWeather();
+  if (state.view === 'germany') renderGermanyView();
+}
+
+function removeFavorite(cityId) {
+  if (isFavorite(cityId)) toggleFavorite(cityId);
+}
+
+
+function openAlertsModal() {
+  const model = state.model;
+  if (!model) return;
+  const city = model.city;
+  const alerts = model.alerts;
+  const list = alerts.length
+    ? `<div class="alert-list">${alerts.map((alert) => `<article class="alert-entry" data-severity="${escapeHTML(alert.severity)}">
+        <div class="alert-entry-head">
+          <span class="alert-badge">${icon('warning', 15)}</span>
+          <div>
+            <div class="alert-entry-title">${escapeHTML(alert.event)}</div>
+            <div class="alert-entry-meta">
+              <span class="pill ${alertSeverityClass(alert.severity)}">${escapeHTML(alert.severityLabel)}</span>
+              <span>${escapeHTML(formatAlertPeriod(alert))}</span>
+            </div>
+          </div>
+        </div>
+        <div class="alert-entry-body">
+          <p>${escapeHTML(alert.headline)}</p>
+          ${alert.description ? `<p style="margin-top:7px">${escapeHTML(alert.description)}</p>` : ''}
+          ${alert.instruction ? `<div class="alert-entry-instruction">${icon('info', 11)} ${escapeHTML(alert.instruction)}</div>` : ''}
+        </div>
+      </article>`).join('')}</div>`
+    : `<div class="alert-safe" style="padding:22px 4px">
+        <span class="alert-safe-icon">${icon('info', 14)}</span>
+        <p><strong>Keine aktiven Warnungen</strong>${model.alertsAvailable ? 'Der Deutsche Wetterdienst meldet für diese Region derzeit keine amtliche Wetterwarnung.' : 'Die DWD-Warnlage konnte für diesen Ort nicht abgerufen werden.'}</p>
+      </div>`;
+
+  showOverlay(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="alertsTitle">
+    <div class="modal-head">
+      <div class="modal-head-copy">
+        <div class="modal-kicker">DWD-Warnlage · ${escapeHTML(city.name)}</div>
+        <h2 class="modal-title" id="alertsTitle">${alerts.length ? `${alerts.length} amtliche ${alerts.length === 1 ? 'Warnung' : 'Warnungen'}` : 'Keine Warnungen'}</h2>
+        <p class="modal-subtitle">Direkt vom Deutschen Wetterdienst · Stand ${formatTime(model.fetchedAt)} Uhr</p>
+      </div>
+      <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
+    </div>
+    <div class="modal-body">${list}</div>
+    <div class="modal-footer">
+      <span style="margin-right:auto;font-size:9px;color:var(--text-3)">Amtliche Warnungen können sich kurzfristig ändern.</span>
+      <button class="action-button" type="button" data-close>Schließen</button>
+    </div>
+  </div>`);
+}
+
+function openDayModal(dayKey) {
+  const model = state.model;
+  if (!model) return;
+  const day = model.daily.find((entry) => entry.key === dayKey);
+  if (!day) return;
+  const rain = day.precipSum > 0 ? formatPrecip(day.precipSum, state.settings.precipUnit) : 'trocken';
+  const maxWind = finite(day.maxGust) ? formatWind(day.maxGust, state.settings.windUnit, 0) : (finite(day.maxWind) ? formatWind(day.maxWind, state.settings.windUnit, 0) : '–');
+  const rows = day.hours
+    .map((hour) => {
+      const prob = Number.isFinite(hour.prob) ? `${Math.round(hour.prob)} %` : '–';
+      const amount = hour.precip > 0 ? formatPrecip(hour.precip, state.settings.precipUnit) : null;
+      return `<div class="day-hour-row">
+        <span class="day-hour-time">${formatTime(hour.timestamp)}</span>
+        <span class="day-hour-icon">${weatherIcon(hour.icon)}</span>
+        <span class="day-hour-main">
+          <span class="day-hour-label">${escapeHTML(hour.label)}</span>
+          <span class="day-hour-meta">Regen ${escapeHTML(prob)}${amount ? ` · ${escapeHTML(amount)}` : ''}${finite(hour.gustSpeed) ? ` · Böen ${escapeHTML(formatWind(hour.gustSpeed, state.settings.windUnit, 0))}` : ''}</span>
+        </span>
+        <span class="day-hour-temp">${escapeHTML(formatTemp(hour.tempC, state.settings.tempUnit))}</span>
+      </div>`;
+    })
+    .join('');
+
+  showOverlay(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="dayTitle">
+    <div class="modal-head">
+      <div class="modal-head-copy">
+        <div class="modal-kicker">${escapeHTML(model.city.name)} · Stundenverlauf</div>
+        <h2 class="modal-title" id="dayTitle">${escapeHTML(day.labelDay)} · ${escapeHTML(formatDateWithWeekday(day.date))}</h2>
+        <p class="modal-subtitle">${escapeHTML(day.label)} · Sonnenaufgang ${day.sunrise ? formatTime(day.sunrise) : '–'} · Sonnenuntergang ${day.sunset ? formatTime(day.sunset) : '–'}</p>
+      </div>
+      <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
+    </div>
+    <div class="modal-body">
+      <div class="day-summary-strip">
+        <div class="day-summary-cell"><span>Höchstwert</span><strong>${escapeHTML(formatTemp(day.high, state.settings.tempUnit))}</strong></div>
+        <div class="day-summary-cell"><span>Tiefstwert</span><strong>${escapeHTML(formatTemp(day.low, state.settings.tempUnit))}</strong></div>
+        <div class="day-summary-cell"><span>Niederschlag</span><strong>${escapeHTML(rain)}</strong></div>
+      </div>
+      <div class="day-summary-strip">
+        <div class="day-summary-cell"><span>Regenrisiko</span><strong>${Number.isFinite(day.probMax) ? `${Math.round(day.probMax)} %` : '–'}</strong></div>
+        <div class="day-summary-cell"><span>Sonnenschein</span><strong>${formatDuration(day.sunshineMinutes)}</strong></div>
+        <div class="day-summary-cell"><span>Stärkste Böen</span><strong>${escapeHTML(maxWind)}</strong></div>
+      </div>
+      <div class="day-detail-chart" id="dayChart"></div>
+      <div class="day-hours">${rows}</div>
+      <div class="settings-note">Alle Werte stammen aus den amtlichen DWD-Vorhersagen über Bright Sky. Zeiten in deutscher Ortszeit.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="action-button" type="button" data-close>Schließen</button>
+    </div>
+  </div>`, {
+    onMount: (overlay) => {
+      requestAnimationFrame(() => renderDayChart($('#dayChart', overlay), day, state.settings));
+    },
+  });
+}
+
+function settingsSelectOptions(values, selected) {
+  return values.map(([value, label]) => `<option value="${escapeHTML(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('');
+}
+
+function openSettingsModal() {
+  const settings = state.settings;
+  const overlayMarkup = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-head">
+      <div class="modal-head-copy">
+        <div class="modal-kicker">Brise · Persönlich</div>
+        <h2 class="modal-title" id="settingsTitle">Einstellungen</h2>
+        <p class="modal-subtitle">Darstellung, Einheiten und Aktualisierung gelten für alle Ansichten.</p>
+      </div>
+      <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <div class="settings-section-title">Darstellung</div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Farbschema</div><div class="setting-hint">Mitternacht ist der dunkle Standard, Tageslicht ist hell und klar.</div></div>
+          <div class="setting-control">
+            <select class="settings-select" data-setting="theme" aria-label="Farbschema">
+              ${settingsSelectOptions([['night', 'Mitternacht'], ['day', 'Tageslicht'], ['system', 'System folgen']], settings.theme)}
+            </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Bewegung & Animationen</div><div class="setting-hint">Animationen für Wetterbilder, Radar und Übergänge einschalten.</div></div>
+          <button class="toggle" type="button" role="switch" aria-checked="${settings.animations}" aria-label="Animationen" data-toggle-setting="animations"></button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Einheiten</div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Temperatur</div><div class="setting-hint">Gilt für alle Anzeigen und Diagramme.</div></div>
+          <div class="setting-control">
+            <select class="settings-select" data-setting="tempUnit" aria-label="Temperatureinheit">
+              ${settingsSelectOptions([['c', 'Celsius (°C)'], ['f', 'Fahrenheit (°F)']], settings.tempUnit)}
+            </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Windgeschwindigkeit</div><div class="setting-hint">Böen und Wind werden passend umgerechnet.</div></div>
+          <div class="setting-control">
+            <select class="settings-select" data-setting="windUnit" aria-label="Windeinheit">
+              ${settingsSelectOptions([['kmh', 'Kilometer pro Stunde'], ['ms', 'Meter pro Sekunde'], ['mph', 'Meilen pro Stunde']], settings.windUnit)}
+            </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Niederschlagsmenge</div><div class="setting-hint">Millimeter oder Zoll in Details und Diagrammen.</div></div>
+          <div class="setting-control">
+            <select class="settings-select" data-setting="precipUnit" aria-label="Niederschlagseinheit">
+              ${settingsSelectOptions([['mm', 'Millimeter'], ['in', 'Zoll']], settings.precipUnit)}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Daten</div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Automatisch aktualisieren</div><div class="setting-hint">Brise lädt neue DWD-Beobachtungen im Hintergrund.</div></div>
+          <div class="setting-control">
+            <select class="settings-select" data-setting="refreshMinutes" aria-label="Aktualisierungsintervall">
+              ${settingsSelectOptions([['5', 'Alle 5 Minuten'], ['10', 'Alle 10 Minuten'], ['15', 'Alle 15 Minuten'], ['30', 'Alle 30 Minuten'], ['0', 'Nur manuell']], settings.refreshMinutes)}
+            </select>
+          </div>
+        </div>
+        <div class="settings-note">Brise nutzt kostenlose, offene Wetterdaten des Deutschen Wetterdienstes über Bright Sky. Es werden keine Konten, API-Schlüssel oder Tracking-Dienste benötigt.</div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Tastatur</div>
+        <div class="shortcut-grid">
+          <div class="shortcut-row"><span>Suche & Befehle</span><kbd>Strg K</kbd></div>
+          <div class="shortcut-row"><span>Einstellungen</span><kbd>Strg ,</kbd></div>
+          <div class="shortcut-row"><span>Ansichten wechseln</span><kbd>1 – 3</kbd></div>
+          <div class="shortcut-row"><span>Daten aktualisieren</span><kbd>Strg R</kbd></div>
+        </div>
+        <div class="settings-actions" style="margin-top:12px">
+          <button class="action-button" type="button" data-settings-action="shortcuts">${icon('command', 13)} Alle Tastenkürzel</button>
+          <button class="action-button" type="button" data-settings-action="reset-favorites">${icon('star', 13)} Favoriten zurücksetzen</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="action-button" type="button" data-settings-action="reset" style="margin-right:auto">${icon('refresh', 13)} Standard wiederherstellen</button>
+      <button class="action-button" type="button" data-close>Fertig</button>
+      <button class="action-button primary" type="button" data-settings-action="refresh">${icon('refresh', 13)} Jetzt aktualisieren</button>
+    </div>
+  </div>`;
+
+  const overlay = showOverlay(overlayMarkup, {
+    onMount: (root) => {
+      root.addEventListener('change', (event) => {
+        const key = event.target.closest('[data-setting]')?.dataset.setting;
+        if (!key) return;
+        let value = event.target.value;
+        if (key === 'refreshMinutes') value = Number(value);
+        state.settings[key] = value;
+        persistSettings();
+        applyTheme();
+        if (key === 'refreshMinutes') scheduleRefresh();
+        rerenderForSettings();
+      });
+      root.addEventListener('click', (event) => {
+        const toggle = event.target.closest('[data-toggle-setting]');
+        if (toggle) {
+          const key = toggle.dataset.toggleSetting;
+          state.settings[key] = !state.settings[key];
+          toggle.setAttribute('aria-checked', String(state.settings[key]));
+          persistSettings();
+          applyTheme();
+          rerenderForSettings();
+          return;
+        }
+        const action = event.target.closest('[data-settings-action]')?.dataset.settingsAction;
+        if (!action) return;
+        if (action === 'shortcuts') {
+          openShortcutsModal();
+        } else if (action === 'reset') {
+          state.settings = { ...DEFAULT_SETTINGS };
+          persistSettings();
+          applyTheme();
+          scheduleRefresh();
+          rerenderForSettings();
+          openSettingsModal();
+          showToast('Einstellungen zurückgesetzt.', { icon: 'settings' });
+        } else if (action === 'reset-favorites') {
+          state.favorites = DEFAULT_FAVORITES.filter((id) => CITY_BY_ID[id]);
+          persistFavorites();
+          renderFavorites();
+          loadFavoriteSummaries(true);
+          if (state.view === 'germany') renderGermanyView();
+          openSettingsModal();
+          showToast('Favoriten zurückgesetzt.', { icon: 'star' });
+        } else if (action === 'refresh') {
+          closeOverlay();
+          refreshAllData();
+        }
+      });
+    },
+  });
+  return overlay;
+}
+
+function openAboutModal() {
+  showOverlay(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="modal-head">
+      <div class="modal-head-copy">
+        <div class="modal-kicker">Brise · Über die App</div>
+        <h2 class="modal-title" id="aboutTitle">Wetter, das sich richtig anfühlt.</h2>
+        <p class="modal-subtitle">Eine native Linux-App für den Deutschen Wetterdienst — ruhig, präzise und für Wayland gebaut.</p>
+      </div>
+      <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
+    </div>
+    <div class="modal-body">
+      <div class="about-copy">
+        <p>Brise zeigt amtliche DWD-Beobachtungen und Vorhersagen für jede deutsche Stadt. Die Daten stammen direkt vom Deutschen Wetterdienst und werden über die offene Bright-Sky-Schnittstelle aufbereitet. Kein API-Schlüssel, kein Konto, kein Tracking.</p>
+        <p>Mit der Ortsuche lässt sich jeder Ort in Deutschland hinzufügen. Die Suche nutzt Open-Meteo Geocoding mit Daten von GeoNames; Wetter, Warnungen und Radar bleiben ausschließlich DWD-Daten.</p>
+        <p>Die Deutschlandkarte basiert auf Natural-Earth-Geometrien (gemeinfrei) und zeigt ausschließlich reale Messwerte der nächstgelegenen DWD-Stationen. Warnungen stammen aus der amtlichen DWD-Warnlage.</p>
+      </div>
+      <div class="about-links">
+        <div class="about-link">${icon('cloud', 14)}<strong>Datenquelle</strong><span>Deutscher Wetterdienst (offene Daten)</span></div>
+        <div class="about-link">${icon('layers', 14)}<strong>Schnittstelle</strong><span>Bright Sky · api.brightsky.dev</span></div>
+        <div class="about-link">${icon('map', 14)}<strong>Karten</strong><span>Natural Earth · gemeinfrei</span></div>
+        <div class="about-link">${icon('pin', 14)}<strong>Ortsuche</strong><span>Open-Meteo Geocoding · GeoNames</span></div>
+        <div class="about-link">${icon('radar', 14)}<strong>Radar</strong><span>DWD Radarverbund, 5-Minuten-Komposite</span></div>
+      </div>
+      <div class="settings-note">Brise 1.0 · Tauri 2 · WebKitGTK · Wayland-optimiert. DWD-Daten stehen unter der Lizenz „Geodaten Deutschland – Namensnennung“.</div>
+    </div>
+    <div class="modal-footer">
+      <span style="margin-right:auto;font-size:9px;color:var(--text-3)">Mit Sorgfalt für Linux gebaut.</span>
+      <button class="action-button" type="button" data-close>Schließen</button>
+    </div>
+  </div>`);
+}
+
+function openShortcutsModal() {
+  showOverlay(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+    <div class="modal-head">
+      <div class="modal-head-copy">
+        <div class="modal-kicker">Brise · Schneller unterwegs</div>
+        <h2 class="modal-title" id="shortcutsTitle">Tastenkürzel</h2>
+        <p class="modal-subtitle">Die wichtigsten Abkürzungen – auch ohne Maus.</p>
+      </div>
+      <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
+    </div>
+    <div class="modal-body">
+      <div class="shortcut-grid">
+        <div class="shortcut-row"><span>Suche & Befehle</span><kbd>Strg K</kbd></div>
+        <div class="shortcut-row"><span>Einstellungen</span><kbd>Strg ,</kbd></div>
+        <div class="shortcut-row"><span>Wetteransicht</span><kbd>1</kbd></div>
+        <div class="shortcut-row"><span>Regenradar</span><kbd>2</kbd></div>
+        <div class="shortcut-row"><span>Deutschlandkarte</span><kbd>3</kbd></div>
+        <div class="shortcut-row"><span>Daten aktualisieren</span><kbd>Strg R</kbd></div>
+        <div class="shortcut-row"><span>Overlay schließen</span><kbd>Esc</kbd></div>
+        <div class="shortcut-row"><span>Diagramm steuern</span><kbd>← →</kbd></div>
+      </div>
+      <div class="settings-note">Tipp: Im Suchfeld mit ↑ und ↓ navigieren und mit Enter öffnen.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="action-button" type="button" data-close>Schließen</button>
+    </div>
+  </div>`);
+}
+
+
+function commandMatches(command, query) {
+  if (!query) return true;
+  const haystack = normalizeSearch(`${command.title} ${command.subtitle}`);
+  return query.split(/\s+/).every((part) => haystack.includes(part));
+}
+
+function searchGroups(query) {
+  const normalized = normalizeSearch(query);
+  const groups = [];
+  if (!normalized) {
+    const favoriteCities = state.favorites.map((id) => CITY_BY_ID[id]).filter(Boolean).slice(0, 6);
+    if (favoriteCities.length) groups.push({ label: 'Deine Favoriten', items: favoriteCities.map((city) => ({ kind: 'city', city })) });
+    const popular = ['berlin', 'hamburg', 'muenchen', 'koeln', 'frankfurt', 'stuttgart']
+      .filter((id) => !state.favorites.includes(id))
+      .map((id) => CITY_BY_ID[id])
+      .filter(Boolean)
+      .slice(0, 6);
+    if (popular.length) groups.push({ label: 'Städte entdecken', items: popular.map((city) => ({ kind: 'city', city })) });
+    groups.push({ label: 'Schnellzugriff', items: SEARCH_COMMANDS.map((command) => ({ kind: 'command', command })) });
+    return groups;
+  }
+  const cities = searchCities(query, 12);
+  if (cities.length) groups.push({ label: 'Städte', items: cities.map((city) => ({ kind: 'city', city })) });
+  const commands = SEARCH_COMMANDS.filter((command) => commandMatches(command, normalized));
+  if (commands.length) groups.push({ label: 'Befehle', items: commands.map((command) => ({ kind: 'command', command })) });
+
+  const seen = new Set(cities.map((city) => normalizeSearch(`${city.name}${city.state}`)));
+  const remote = state.remotePlaces.filter((city) => {
+    const key = normalizeSearch(`${city.name}${city.state}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (remote.length) {
+    groups.push({ label: 'Weitere Orte in Deutschland', items: remote.map((city) => ({ kind: 'city', city, remote: true })) });
+  }
+  return groups;
+}
+
+function scheduleRemoteSearch(query) {
+  if (state.remoteTimer) clearTimeout(state.remoteTimer);
+  state.searchGeneration += 1;
+  if (normalizeSearch(query).length < 2) {
+    state.remotePlaces = [];
+    state.remoteError = null;
+    state.remoteLoading = false;
+    renderSearchResults();
+    return;
+  }
+  state.remoteTimer = setTimeout(() => runRemoteSearch(query), 250);
+}
+
+async function runRemoteSearch(query) {
+  const generation = ++state.searchGeneration;
+  state.remoteLoading = true;
+  state.remoteError = null;
+  state.remotePlaces = [];
+  renderSearchResults();
+  try {
+    const data = await searchPlaces(query);
+    if (generation !== state.searchGeneration) return;
+    state.remotePlaces = (data?.results || []).map((place) => ({
+      id: place.id,
+      name: place.name,
+      state: place.state,
+      lat: place.lat,
+      lon: place.lon,
+    }));
+  } catch (error) {
+    if (generation !== state.searchGeneration) return;
+    state.remoteError = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (generation === state.searchGeneration) {
+      state.remoteLoading = false;
+      renderSearchResults();
+    }
+  }
+}
+
+function resolveSearchCity(item) {
+  if (!item || item.kind !== 'city') return null;
+  return (item.remote ? registerCity(item.city) : null) || item.city;
+}
+
+function searchItemMarkup(item, index) {
+  const selected = index === state.searchIndex ? ' is-selected' : '';
+  if (item.kind === 'city') {
+    const city = item.city;
+    const weather = summaryWeather(city.id);
+    const favorite = isFavorite(city.id);
+    const temp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '';
+    const weatherLabel = weather
+      ? `${summaryLabel(city, weather)} · ${city.state}`
+      : (item.remote ? `${city.state} · Neu in Brise` : city.state);
+    const iconMarkup = weather ? weatherIcon(summaryIconName(city, weather)) : icon('pin', 15);
+    return `<div class="command-item${selected}${item.remote ? ' is-remote' : ''}" data-search-item="${index}" role="option" aria-selected="${index === state.searchIndex}">
+      <span class="command-item-icon">${iconMarkup}</span>
+      <span class="command-item-copy">
+        <span class="command-item-title">${escapeHTML(city.name)}</span>
+        <span class="command-item-subtitle">${escapeHTML(weatherLabel)}</span>
+      </span>
+      <span class="command-item-meta">
+        ${temp ? `<span class="command-item-temp">${escapeHTML(temp)}</span>` : ''}
+        <button class="command-fav ${favorite ? 'is-favorite' : ''}" type="button" data-search-fav="${index}" aria-label="${favorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}" title="${favorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}">${icon(favorite ? 'starFilled' : 'star', 14)}</button>
+      </span>
+    </div>`;
+  }
+  const command = item.command;
+  return `<div class="command-item${selected}" data-search-item="${index}" role="option" aria-selected="${index === state.searchIndex}">
+    <span class="command-item-icon">${icon(command.icon, 15)}</span>
+    <span class="command-item-copy">
+      <span class="command-item-title">${escapeHTML(command.title)}</span>
+      <span class="command-item-subtitle">${escapeHTML(command.subtitle)}</span>
+    </span>
+    <span class="command-item-meta"><kbd>↵</kbd></span>
+  </div>`;
+}
+
+function renderSearchResults(resetIndex = false) {
+  const input = $('#searchInput');
+  const results = $('#searchResults');
+  if (!input || !results) return;
+  if (resetIndex) state.searchIndex = 0;
+  const groups = searchGroups(input.value);
+  state.searchItems = groups.flatMap((group) => group.items);
+  if (state.searchIndex >= state.searchItems.length) state.searchIndex = Math.max(0, state.searchItems.length - 1);
+  const status = [];
+  if (state.remoteLoading) {
+    status.push(`<div class="command-status"><span class="loader-orbit is-small"></span> Weitere Orte in Deutschland werden gesucht …</div>`);
+  } else if (state.remoteError) {
+    status.push(`<div class="command-status is-error">Ortsuche derzeit nicht verfügbar: ${escapeHTML(state.remoteError)}</div>`);
+  }
+  if (!groups.length) {
+    if (!status.length) {
+      status.push(`<div class="command-empty"><strong>Kein Ort gefunden</strong>Versuche einen anderen Ortsnamen oder einen Befehl wie „Radar“.</div>`);
+    }
+    results.innerHTML = status.join('');
+    return;
+  }
+  let index = 0;
+  results.innerHTML = groups.map((group) => {
+    const items = group.items.map((item) => {
+      const markup = searchItemMarkup(item, index);
+      index += 1;
+      return markup;
+    }).join('');
+    return `<div class="command-group-label">${escapeHTML(group.label)}</div>${items}`;
+  }).join('') + status.join('');
+  requestAnimationFrame(() => {
+    const selected = results.querySelector(`[data-search-item="${state.searchIndex}"]`);
+    selected?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function searchSetIndex(next) {
+  if (!state.searchItems.length) return;
+  state.searchIndex = (next + state.searchItems.length) % state.searchItems.length;
+  const results = $('#searchResults');
+  if (!results) return;
+  $$('[data-search-item]', results).forEach((item) => {
+    const active = Number(item.dataset.searchItem) === state.searchIndex;
+    item.classList.toggle('is-selected', active);
+    item.setAttribute('aria-selected', String(active));
+    if (active) item.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function executeSearchItem(index) {
+  const item = state.searchItems[index];
+  if (!item) return;
+  if (item.kind === 'city') {
+    const city = resolveSearchCity(item);
+    closeOverlay();
+    if (city) selectCity(city.id, { navigate: true });
+    return;
+  }
+  closeOverlay();
+  runCommand(item.command.id);
+}
+
+function runCommand(commandId) {
+  if (commandId === 'radar') switchView('radar');
+  else if (commandId === 'germany') switchView('germany');
+  else if (commandId === 'settings') openSettingsModal();
+  else if (commandId === 'shortcuts') openShortcutsModal();
+  else if (commandId === 'about') openAboutModal();
+  else if (commandId === 'refresh') refreshAllData();
+}
+
+function openSearch(prefill = '') {
+  const overlay = showOverlay(`<div class="modal command-modal" role="dialog" aria-modal="true" aria-label="Orte und Befehle suchen">
+    <div class="command-search">
+      ${icon('search', 19)}
+      <input class="command-input" id="searchInput" type="text" placeholder="Ort oder Befehl suchen …" autocomplete="off" spellcheck="false" aria-controls="searchResults" aria-autocomplete="list" value="${escapeHTML(prefill)}">
+      <span class="command-esc"><kbd>ESC</kbd></span>
+    </div>
+    <div class="command-results" id="searchResults" role="listbox" aria-label="Suchergebnisse"></div>
+    <div class="command-footer">
+      <span class="shortcut"><kbd>↑</kbd><kbd>↓</kbd> Navigieren</span>
+      <span class="shortcut"><kbd>↵</kbd> Öffnen</span>
+      <span class="shortcut"><kbd>Strg K</kbd> Jederzeit</span>
+      <span style="margin-left:auto">DWD · offene Daten</span>
+    </div>
+  </div>`, { focusSelector: '#searchInput' });
+
+  if (!overlay) return;
+  const input = $('#searchInput', overlay);
+  const results = $('#searchResults', overlay);
+  renderSearchResults(true);
+  if (normalizeSearch(input.value).length >= 2) scheduleRemoteSearch(input.value);
+  input.addEventListener('input', () => {
+    renderSearchResults(true);
+    scheduleRemoteSearch(input.value);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      searchSetIndex(state.searchIndex + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      searchSetIndex(state.searchIndex - 1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      executeSearchItem(state.searchIndex);
+    }
+  });
+  results.addEventListener('click', (event) => {
+    const favoriteButton = event.target.closest('[data-search-fav]');
+    if (favoriteButton) {
+      event.stopPropagation();
+      const city = resolveSearchCity(state.searchItems[Number(favoriteButton.dataset.searchFav)]);
+      if (city) toggleFavorite(city.id);
+      renderSearchResults();
+      return;
+    }
+    const item = event.target.closest('[data-search-item]');
+    if (item) executeSearchItem(Number(item.dataset.searchItem));
+  });
+}
+
+
+// ---------- Radar view ----------
+
+function radarFrameIsForecast(frame) {
+  return Boolean(frame?.date && frame.date.getTime() > Date.now() + 60000);
+}
+
+function radarRangeTrack(index, total) {
+  const percent = total > 1 ? (index / (total - 1)) * 100 : 100;
+  return `linear-gradient(90deg, var(--accent) 0%, var(--accent) ${percent}%, rgba(125, 238, 211, 0.18) ${percent}%)`;
+}
+
+function radarShellMarkup(city) {
+  const data = state.radarCityId === city.id ? state.radarData : null;
+  const loading = state.radarLoading || (!data && !state.radarError);
+  const error = state.radarError;
+  const frameCount = data?.frames?.length || 0;
+  const first = data?.frames?.[0];
+  const last = data?.frames?.[frameCount - 1];
+  return `<div class="radar-layout">
+    <section class="card radar-main">
+      <header class="card-head">
+        <div class="card-heading">
+          <p class="kicker">Niederschlag · ${escapeHTML(city.name)}</p>
+          <h2 class="card-title">Regenradar</h2>
+        </div>
+        <div class="radar-toolbar">
+          <button class="radar-play" id="radarPlay" type="button" aria-label="Radar abspielen" title="Wiedergabe starten oder anhalten">${icon('play', 14)}</button>
+          <button class="radar-now-button" id="radarNow" type="button">${icon('clock', 11)} Jetzt</button>
+          <span class="radar-frame-label">
+            <strong id="radarFrameTime">–:–</strong>
+            <span class="radar-frame-badge" id="radarFrameBadge">Aktuell</span>
+          </span>
+        </div>
+      </header>
+      <div class="radar-stage" id="radarStage">
+        <div class="radar-canvas-wrap"><canvas id="radarCanvas" aria-label="Animiertes DWD-Regenradar über ${escapeHTML(city.name)}"></canvas></div>
+        <div class="radar-marker" id="radarMarker"><span>${escapeHTML(city.name)}</span></div>
+        <div class="radar-overlay-top">
+          <span class="radar-live-chip" id="radarLiveChip"><i></i>DWD-Radarverbund · 5-Minuten-Komposite</span>
+          <span class="radar-live-chip" id="radarFrameChip"><i></i>${frameCount ? `${frameCount} Radarbilder` : 'lädt'}</span>
+        </div>
+        <div class="radar-legend">
+          <div class="radar-legend-label"><span>Niederschlag</span><span>mm/h</span></div>
+          <div class="radar-legend-bar"></div>
+          <div class="radar-legend-scale"><span>leicht</span><span>mäßig</span><span>stark</span><span>extrem</span></div>
+        </div>
+        <div class="radar-attribution">DWD Radarverbund · via Bright Sky</div>
+        ${loading ? `<div class="radar-loading"><span class="loader-orbit"></span><span>Radarkomposite werden geladen …</span></div>` : ''}
+        ${error ? `<div class="radar-error">${icon('warning', 22)}<strong>Radar nicht erreichbar</strong><p>${escapeHTML(usefulError(error))}</p><button class="action-button" type="button" data-radar-retry>${icon('refresh', 13)} Erneut versuchen</button></div>` : ''}
+      </div>
+      <div class="radar-scrubber">
+        <span class="radar-scrubber-time">${first ? formatTime(first.timestamp) : '–:–'}</span>
+        <div class="radar-range-wrap">
+          <input class="radar-range" id="radarRange" type="range" min="0" max="${Math.max(0, frameCount - 1)}" value="0" step="1" aria-label="Radarzeitpunkt wählen" ${frameCount ? '' : 'disabled'}>
+        </div>
+        <span class="radar-scrubber-time">${last ? formatTime(last.timestamp) : '+90 Min.'}</span>
+      </div>
+      <div class="radar-range-marks"><span>Beobachtung</span><span>Jetzt</span><span>Prognose</span></div>
+    </section>
+    <aside class="radar-side" id="radarSide">
+      <article class="card rain-now-card" data-tone="dry">
+        <div class="rain-now-icon">${icon('radar', 18)}</div>
+        <div class="rain-now-eyebrow">Über ${escapeHTML(city.name)}</div>
+        <div class="rain-now-title">Radar wird ausgewertet …</div>
+        <p class="rain-now-text">Die 5-Minuten-Komposite des DWD werden geladen.</p>
+      </article>
+      <article class="card radar-legend-card">
+        <h3 class="radar-legend-title">Intensität lesen</h3>
+        ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${entry.label === 'leicht' ? '< 2' : entry.label === 'mäßig' ? '2–10' : entry.label === 'kräftig' ? '10–25' : entry.label === 'stark' ? '25–50' : '> 50'} mm/h</span></div>`).join('')}
+      </article>
+      <article class="card radar-source-card">
+        <div class="radar-source-head"><span class="radar-source-mark">DWD</span><span>Amtliches Radar</span></div>
+        <p>Radarverbund des Deutschen Wetterdienstes, alle fünf Minuten neu. Vergangene Messungen und 90-Minuten-Prognose in einer Ansicht.</p>
+        <div class="radar-source-stats">
+          <div class="radar-source-stat"><span>Radius</span><strong>120 km</strong></div>
+          <div class="radar-source-stat"><span>Radarbilder</span><strong>${frameCount || '–'}</strong></div>
+          <div class="radar-source-stat"><span>Aktualisierung</span><strong>5 Min.</strong></div>
+        </div>
+      </article>
+    </aside>
+  </div>`;
+}
+
+function renderRadarSide(renderer) {
+  const side = $('#radarSide');
+  if (!side || !renderer) return;
+  const summary = renderer.summarize();
+  const points = summary.points || [];
+  const maxValue = points.reduce((max, point) => Math.max(max, point.value), 0) || 1;
+  const bars = points
+    .map((point) => {
+      const height = Math.max(2, Math.round((point.value / maxValue) * 100));
+      const strong = point.value >= 6;
+      const classes = ['rain-timeline-bar', point.forecast ? 'is-forecast' : '', strong ? 'is-strong' : ''].filter(Boolean).join(' ');
+      return `<span class="${classes}" style="height:${height}%" title="${formatTime(point.time)} · ${point.forecast ? 'Prognose' : 'Messung'}"></span>`;
+    })
+    .join('');
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  const iconName = summary.tone === 'rain' ? 'umbrella' : summary.tone === 'incoming' ? 'cloud' : 'sun';
+  side.innerHTML = `<article class="card rain-now-card" data-tone="${escapeHTML(summary.tone)}">
+      <div class="rain-now-icon">${icon(iconName, 18)}</div>
+      <div class="rain-now-eyebrow">Über ${escapeHTML(renderer.city?.name || currentCity().name)}</div>
+      <div class="rain-now-title">${escapeHTML(summary.headline)}</div>
+      <p class="rain-now-text">${escapeHTML(summary.text)}</p>
+      <div class="rain-timeline" aria-hidden="true">${bars}</div>
+      <div class="rain-timeline-labels"><span>${firstPoint ? formatTime(firstPoint.time) : '–:–'}</span><span>Jetzt</span><span>${lastPoint ? formatTime(lastPoint.time) : '+90 Min.'}</span></div>
+    </article>
+    <article class="card radar-legend-card">
+      <h3 class="radar-legend-title">Intensität lesen</h3>
+      ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${entry.label === 'leicht' ? '< 2' : entry.label === 'mäßig' ? '2–10' : entry.label === 'kräftig' ? '10–25' : entry.label === 'stark' ? '25–50' : '> 50'} mm/h</span></div>`).join('')}
+    </article>
+    <article class="card radar-source-card">
+      <div class="radar-source-head"><span class="radar-source-mark">DWD</span><span>Amtliches Radar</span></div>
+      <p>Radarverbund des Deutschen Wetterdienstes, alle fünf Minuten neu. Vergangene Messungen und 90-Minuten-Prognose in einer Ansicht.</p>
+      <div class="radar-source-stats">
+        <div class="radar-source-stat"><span>Radius</span><strong>120 km</strong></div>
+        <div class="radar-source-stat"><span>Radarbilder</span><strong>${renderer.frames.length}</strong></div>
+        <div class="radar-source-stat"><span>Max. Intensität</span><strong>${escapeHTML(summary.intensity)}</strong></div>
+      </div>
+    </article>`;
+}
+
+function updateRadarFrameUI(frame, index) {
+  const renderer = state.radarRenderer;
+  if (!renderer) return;
+  state.radarFrameIndex = index;
+  const forecast = radarFrameIsForecast(frame);
+  const timeEl = $('#radarFrameTime');
+  const badge = $('#radarFrameBadge');
+  const chip = $('#radarFrameChip');
+  const liveChip = $('#radarLiveChip');
+  if (timeEl) timeEl.textContent = `${formatTime(frame?.date)} Uhr`;
+  if (badge) {
+    badge.textContent = forecast ? 'Prognose' : 'Live';
+    badge.classList.toggle('is-forecast', forecast);
+  }
+  if (chip) {
+    chip.innerHTML = `<i></i>${forecast ? 'Vorhersage' : 'Messung'} · ${index + 1}/${renderer.frames.length}`;
+    chip.classList.toggle('is-forecast', forecast);
+  }
+  if (liveChip) liveChip.classList.toggle('is-forecast', forecast);
+  const range = $('#radarRange');
+  if (range) {
+    range.value = String(index);
+    range.style.setProperty('--range-track', radarRangeTrack(index, renderer.frames.length));
+  }
+  const play = $('#radarPlay');
+  if (play) {
+    play.innerHTML = icon(renderer.playing ? 'pause' : 'play', 14);
+    play.setAttribute('aria-label', renderer.playing ? 'Radar pausieren' : 'Radar abspielen');
+  }
+}
+
+function mountRadarRenderer(city) {
+  const canvas = $('#radarCanvas');
+  const marker = $('#radarMarker');
+  if (!canvas || !state.radarData || state.radarCityId !== city.id) return;
+  state.radarRenderer?.destroy();
+  const renderer = new RadarRenderer(canvas, {
+    marker,
+    onFrame: updateRadarFrameUI,
+  });
+  state.radarRenderer = renderer;
+  renderer.setData(state.radarData, city);
+  state.radarFrameIndex = renderer.index;
+  renderRadarSide(renderer);
+  updateRadarFrameUI(renderer.frames[renderer.index], renderer.index);
+  if (renderer.frames.length > 1) renderer.play();
+  window.setTimeout(() => {
+    if (state.radarRenderer === renderer) {
+      renderer.resize(true);
+      updateRadarFrameUI(renderer.frames[renderer.index], renderer.index);
+    }
+  }, 90);
+}
+
+function renderRadarView() {
+  const container = $('#radarContent');
+  if (!container) return;
+  const city = currentCity();
+  container.innerHTML = radarShellMarkup(city);
+  if (state.radarData && state.radarCityId === city.id) {
+    requestAnimationFrame(() => mountRadarRenderer(city));
+  }
+}
+
+async function loadRadar(force = false) {
+  const city = currentCity();
+  if (state.radarLoading) return;
+  state.radarLoading = true;
+  state.radarError = null;
+  const cacheValid = state.radarData && state.radarCityId === city.id && Date.now() - state.radarFetchedAt < 4 * 60 * 1000;
+  if (cacheValid && !force) {
+    state.radarLoading = false;
+    renderRadarView();
+    return;
+  }
+  if (state.radarCityId !== city.id) {
+    state.radarData = null;
+    state.radarCityId = null;
+  }
+  renderRadarView();
+  setPageLive(false);
+  try {
+    const data = await fetchRadar(city);
+    state.radarData = data;
+    state.radarCityId = city.id;
+    state.radarFetchedAt = Date.now();
+    state.radarError = null;
+    state.radarStatus = 'ready';
+    renderRadarView();
+  } catch (error) {
+    state.radarError = usefulError(error);
+    state.radarStatus = 'error';
+    renderRadarView();
+    setLiveState('error', 'Radar nicht erreichbar');
+    console.warn('Brise: Radar konnte nicht geladen werden', error);
+  } finally {
+    state.radarLoading = false;
+    const loader = $('.radar-loading');
+    if (loader && state.radarData) loader.remove();
+  }
+}
+
+
+// ---------- Germany map ----------
+
+const GERMANY_VIEW = { width: 620, height: 760, padding: 24 };
+
+const GERMANY_METRICS = {
+  temp: {
+    label: 'Temperatur',
+    short: 'Temperatur',
+    icon: 'thermometer',
+    unit: '°C',
+    scale: [[-12, '#4576b8'], [-4, '#4f96cc'], [3, '#69c7c1'], [10, '#a9ddab'], [17, '#e7d486'], [24, '#eda36a'], [32, '#e36b5e']],
+    raw: (weather) => weather?.temperature,
+    display: (value) => ({ value: String(Math.round(tempValue(value, state.settings.tempUnit))), unit: state.settings.tempUnit === 'f' ? '°F' : '°C' }),
+    mapValue: (value) => `${Math.round(tempValue(value, state.settings.tempUnit))}°`,
+  },
+  wind: {
+    label: 'Wind',
+    short: 'Wind',
+    icon: 'wind',
+    unit: 'km/h',
+    scale: [[0, '#5a94bd'], [10, '#7fd8c3'], [20, '#a9ddab'], [32, '#e4d17f'], [45, '#eda36a'], [65, '#e36b5e']],
+    raw: (weather) => weather?.wind_speed_10,
+    display: (value) => ({ value: String(Math.round(windValue(value, state.settings.windUnit))), unit: windLabel(state.settings.windUnit) }),
+    mapValue: (value) => `${Math.round(windValue(value, state.settings.windUnit))}`,
+  },
+  sun: {
+    label: 'Sonne',
+    short: 'Sonnenschein',
+    icon: 'sun',
+    unit: 'Min.',
+    scale: [[0, '#5b6b7d'], [8, '#7199a9'], [18, '#a9c99a'], [32, '#e4d17f'], [46, '#ffca73'], [60, '#ffb35c']],
+    raw: (weather) => weather?.sunshine_60,
+    display: (value) => ({ value: String(Math.round(value)), unit: 'Min.' }),
+    mapValue: (value) => `${Math.round(value)}`,
+  },
+};
+
+const MAP_BUBBLE_OFFSETS = {
+  duesseldorf: [-17, -9],
+  koeln: [13, 12],
+  dortmund: [11, -14],
+  mainz: [13, 14],
+  frankfurt: [-9, 11],
+  saarbruecken: [-8, 11],
+  freiburg: [-9, 11],
+  hannover: [10, -10],
+  magdeburg: [11, -9],
+  nuernberg: [10, 10],
+  stuttgart: [-10, 10],
+  muenchen: [10, -8],
+};
+
+function hexToRgb(hex) {
+  const value = hex.replace('#', '');
+  const int = Number.parseInt(value, 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+}
+
+function interpolateColor(from, to, t) {
+  const a = hexToRgb(from);
+  const b = hexToRgb(to);
+  const mix = a.map((channel, index) => Math.round(channel + (b[index] - channel) * t));
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+}
+
+function metricColor(metricKey, value) {
+  const metric = GERMANY_METRICS[metricKey] || GERMANY_METRICS.temp;
+  if (!finite(value)) return 'rgba(108, 132, 140, 0.55)';
+  const stops = metric.scale;
+  if (value <= stops[0][0]) return stops[0][1];
+  if (value >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    const [lowValue, lowColor] = stops[i];
+    const [highValue, highColor] = stops[i + 1];
+    if (value >= lowValue && value <= highValue) {
+      return interpolateColor(lowColor, highColor, (value - lowValue) / (highValue - lowValue));
+    }
+  }
+  return stops[0][1];
+}
+
+function germanyProjection() {
+  const [minLon, minLat, maxLon, maxLat] = GERMANY_GEO.bounds;
+  const { width, height, padding } = GERMANY_VIEW;
+  const midLat = (minLat + maxLat) / 2;
+  const cosLat = Math.cos((midLat * Math.PI) / 180);
+  const lonSpan = (maxLon - minLon) * cosLat;
+  const latSpan = maxLat - minLat;
+  const scale = Math.min((width - padding * 2) / lonSpan, (height - padding * 2) / latSpan);
+  const mapWidth = lonSpan * scale;
+  const mapHeight = latSpan * scale;
+  const originX = (width - mapWidth) / 2;
+  const originY = (height - mapHeight) / 2;
+  return (lon, lat) => [
+    originX + (lon - minLon) * cosLat * scale,
+    originY + (maxLat - lat) * scale,
+  ];
+}
+
+function pathFromRings(rings, project) {
+  return rings
+    .map((ring) => ring.map(([lon, lat], index) => {
+      const [x, y] = project(lon, lat);
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(' ') + ' Z')
+    .join(' ');
+}
+
+function mapCityWeather(cityId) {
+  return summaryWeather(cityId);
+}
+
+function mapCityMetricValue(cityId, metricKey) {
+  const metric = GERMANY_METRICS[metricKey] || GERMANY_METRICS.temp;
+  const weather = mapCityWeather(cityId);
+  return finite(metric.raw(weather)) ? metric.raw(weather) : null;
+}
+
+function sortedMapCities(metricKey) {
+  const metric = GERMANY_METRICS[metricKey] || GERMANY_METRICS.temp;
+  return MAP_CITY_IDS
+    .map((id) => CITY_BY_ID[id])
+    .filter(Boolean)
+    .map((city) => ({ city, value: mapCityMetricValue(city.id, metricKey) }))
+    .sort((a, b) => {
+      if (a.value === null && b.value === null) return a.city.name.localeCompare(b.city.name, 'de');
+      if (a.value === null) return 1;
+      if (b.value === null) return -1;
+      return b.value - a.value;
+    });
+}
+
+function mapLegendLabels(metricKey) {
+  if (metricKey === 'wind') {
+    const a = Math.round(windValue(0, state.settings.windUnit));
+    const b = Math.round(windValue(65, state.settings.windUnit));
+    return [`${a} ${windLabel(state.settings.windUnit)}`, `${b} ${windLabel(state.settings.windUnit)}`];
+  }
+  if (metricKey === 'sun') return ['0 Min.', '60 Min.'];
+  return [formatTemp(-10, state.settings.tempUnit), formatTemp(32, state.settings.tempUnit)];
+}
+
+function germanyMapMarkup() {
+  const metricKey = state.germanyMetric;
+  const metric = GERMANY_METRICS[metricKey];
+  const project = germanyProjection();
+  const [haloX, haloY] = project(10.4, 51.2);
+  const statePaths = GERMANY_GEO.states
+    .map((stateGeo) => `<path class="geo-state" d="${pathFromRings(stateGeo.rings, project)}" />`)
+    .join('');
+  const outline = pathFromRings(GERMANY_GEO.outline, project);
+
+  const cityMarkup = MAP_CITY_IDS.map((id) => {
+    const city = CITY_BY_ID[id];
+    if (!city) return '';
+    const [x, y] = project(city.lon, city.lat);
+    const [dx, dy] = MAP_BUBBLE_OFFSETS[id] || [0, 0];
+    const weather = mapCityWeather(id);
+    const rawValue = mapCityMetricValue(id, metricKey);
+    const color = metricColor(metricKey, rawValue);
+    const display = finite(rawValue) ? metric.mapValue(rawValue) : '–';
+    const unit = metricKey === 'wind' ? windLabel(state.settings.windUnit) : metricKey === 'sun' ? 'min' : '';
+    const favorite = isFavorite(id);
+    const label = weather ? `${city.name}: ${summaryLabel(city, weather)}` : `${city.name}: keine Daten`;
+    const leader = dx || dy ? `<line class="city-leader" x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x + dx).toFixed(1)}" y2="${(y + dy).toFixed(1)}" />` : '';
+    return `<g class="map-city${favorite ? ' is-favorite' : ''}" data-map-city="${id}" tabindex="0" role="button" aria-label="${escapeHTML(label)}">
+      <circle class="city-halo" cx="${(x + dx).toFixed(1)}" cy="${(y + dy).toFixed(1)}" r="19" />
+      ${leader}
+      <circle class="city-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.1" />
+      <circle class="city-bubble" cx="${(x + dx).toFixed(1)}" cy="${(y + dy).toFixed(1)}" r="14.5" fill="${color}" />
+      <text class="city-value" x="${(x + dx).toFixed(1)}" y="${(y + dy - (unit ? 2 : 0)).toFixed(1)}">${escapeHTML(display)}</text>
+      ${unit ? `<text class="city-unit" x="${(x + dx).toFixed(1)}" y="${(y + dy + 7.5).toFixed(1)}">${escapeHTML(unit)}</text>` : ''}
+      <text class="city-label" x="${(x + dx).toFixed(1)}" y="${(y + dy + 25).toFixed(1)}">${favorite ? '★ ' : ''}${escapeHTML(city.name)}</text>
+    </g>`;
+  }).join('');
+
+  return `<div class="germany-map-wrap">
+    <svg class="germany-map-svg" viewBox="0 0 ${GERMANY_VIEW.width} ${GERMANY_VIEW.height}" role="img" aria-label="Deutschlandkarte mit aktuellen Werten für ${MAP_CITY_IDS.length} Städte">
+      <defs>
+        <radialGradient id="germanyFill" cx="48%" cy="34%" r="72%">
+          <stop offset="0" stop-color="#102b33" />
+          <stop offset="0.55" stop-color="#0c2029" />
+          <stop offset="1" stop-color="#091922" />
+        </radialGradient>
+        <radialGradient id="germanyFillDay" cx="48%" cy="34%" r="72%">
+          <stop offset="0" stop-color="#eaf5ef" />
+          <stop offset="1" stop-color="#d9ebe5" />
+        </radialGradient>
+        <radialGradient id="germanyGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stop-color="rgba(90, 190, 175, 0.16)" />
+          <stop offset="1" stop-color="rgba(90, 190, 175, 0)" />
+        </radialGradient>
+      </defs>
+      <circle cx="${haloX.toFixed(1)}" cy="${haloY.toFixed(1)}" r="260" fill="url(#germanyGlow)" />
+      <path class="geo-glow" d="${outline}" />
+      <path class="geo-outline" d="${outline}" />
+      ${statePaths}
+      ${cityMarkup}
+    </svg>
+    <div class="map-tooltip" id="mapTooltip" hidden></div>
+    ${state.germanyLoading && !MAP_CITY_IDS.some((id) => state.summaries.has(id)) ? `<div class="map-loading"><span class="loader-orbit"></span><span>Aktuelle Werte aus ${MAP_CITY_IDS.length} Städten werden geladen …</span></div>` : ''}
+    ${state.germanyError && !MAP_CITY_IDS.some((id) => state.summaries.has(id)) ? `<div class="map-loading" style="flex-direction:column;gap:9px;text-align:center"><strong style="color:var(--text-2);font-size:12px">Karte nicht erreichbar</strong><span style="max-width:330px">${escapeHTML(usefulError(state.germanyError))}</span><button class="action-button" type="button" data-germany-retry>${icon('refresh', 13)} Erneut versuchen</button></div>` : ''}
+  </div>`;
+}
+
+function germanyRankingMarkup() {
+  const metricKey = state.germanyMetric;
+  const metric = GERMANY_METRICS[metricKey];
+  const rows = sortedMapCities(metricKey).map(({ city, value }, index) => {
+    const weather = mapCityWeather(city.id);
+    const display = finite(value) ? metric.display(value) : { value: '–', unit: '' };
+    const weatherLabel = weather ? summaryLabel(city, weather) : 'Keine Daten';
+    const otherTemp = metricKey !== 'temp' && finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '';
+    return `<button class="ranking-row${city.id === state.selectedCityId ? ' is-active' : ''}" type="button" data-rank-city="${city.id}" aria-label="${escapeHTML(city.name)}: ${escapeHTML(display.value)} ${escapeHTML(display.unit)}">
+      <span class="rank-number">${index + 1}</span>
+      <span class="rank-main">
+        <span class="rank-name">${isFavorite(city.id) ? icon('starFilled', 9) : ''}${escapeHTML(city.name)}</span>
+        <span class="rank-state">${escapeHTML(city.state)}</span>
+      </span>
+      <span class="rank-value-wrap">
+        <span class="rank-value">${escapeHTML(display.value)}<span class="rank-unit">${escapeHTML(display.unit)}</span></span>
+        <span class="rank-weather">${weather ? weatherIcon(summaryIconName(city, weather)) : ''}${escapeHTML(otherTemp || weatherLabel)}</span>
+      </span>
+    </button>`;
+  }).join('');
+  const title = metricKey === 'temp' ? 'Wärmste Städte' : metricKey === 'wind' ? 'Windigste Städte' : 'Sonnigste Städte';
+  return `<aside class="card ranking-card">
+    <header class="card-head">
+      <div class="card-heading">
+        <p class="kicker">Rangliste · ${escapeHTML(metric.short)}</p>
+        <h3 class="card-title">${title}</h3>
+      </div>
+      <span class="pill pill-muted">${MAP_CITY_IDS.length} Städte</span>
+    </header>
+    <div class="ranking-list">${rows}</div>
+    <div class="ranking-foot"><span>${icon('info', 11)} Aktuelle Messwerte der DWD-Stationen</span><span>${formatTime(state.germanyLoadedAt || Date.now())} Uhr</span></div>
+  </aside>`;
+}
+
+function germanyHighlightsMarkup() {
+  const cities = MAP_CITY_IDS.map((id) => CITY_BY_ID[id]).filter(Boolean);
+  const withWeather = cities.filter((city) => mapCityWeather(city.id));
+  if (!withWeather.length) return '';
+  const tempOf = (city) => mapCityWeather(city.id)?.temperature;
+  const windOf = (city) => mapCityWeather(city.id)?.wind_speed_10;
+  const sunOf = (city) => mapCityWeather(city.id)?.sunshine_60;
+  const pick = (fn, mode) => withWeather.filter((city) => finite(fn(city))).sort((a, b) => mode === 'max' ? fn(b) - fn(a) : fn(a) - fn(b))[0] || null;
+  const warmest = pick(tempOf, 'max');
+  const coldest = pick(tempOf, 'min');
+  const windiest = pick(windOf, 'max');
+  const sunniest = pick(sunOf, 'max');
+  const cards = [];
+  if (warmest) cards.push({ tone: 'warm', icon: 'sun', label: 'Wärmster Ort', value: formatTemp(tempOf(warmest), state.settings.tempUnit), unit: '', sub: `${warmest.name} · ${warmest.state}` });
+  if (coldest) cards.push({ tone: 'cool', icon: 'thermometer', label: 'Kältester Ort', value: formatTemp(tempOf(coldest), state.settings.tempUnit), unit: '', sub: `${coldest.name} · ${coldest.state}` });
+  if (windiest) cards.push({ tone: 'wind', icon: 'wind', label: 'Stärkster Wind', value: formatWind(windOf(windiest), state.settings.windUnit, 0), unit: '', sub: `${windiest.name} · ${windiest.state}` });
+  if (sunniest) cards.push({ tone: 'sun', icon: 'sun', label: 'Meiste Sonne', value: `${Math.round(sunOf(sunniest))}`, unit: 'Min.', sub: `${sunniest.name} · ${sunniest.state}` });
+  return `<div class="germany-highlights">${cards.map((card) => `<article class="card highlight-card" data-tone="${card.tone}">
+    <div class="highlight-head">${icon(card.icon, 12)} ${escapeHTML(card.label)}</div>
+    <div class="highlight-value">${escapeHTML(card.value)}${card.unit ? `<small>${escapeHTML(card.unit)}</small>` : ''}</div>
+    <div class="highlight-sub">${escapeHTML(card.sub)}</div>
+  </article>`).join('')}</div>`;
+}
+
+function renderGermanyView() {
+  const container = $('#germanyContent');
+  if (!container) return;
+  const metricKey = state.germanyMetric;
+  const metric = GERMANY_METRICS[metricKey];
+  const loaded = MAP_CITY_IDS.filter((id) => mapCityWeather(id)).length;
+  const updatedAt = state.germanyLoadedAt || Math.max(0, ...MAP_CITY_IDS.map((id) => (summaryFor(id)?.fetched_at || 0) * 1000));
+  const [legendLow, legendHigh] = mapLegendLabels(metricKey);
+  const metricButtons = Object.entries(GERMANY_METRICS).map(([key, entry]) => `<button type="button" data-germany-metric="${key}" class="${key === metricKey ? 'is-active' : ''}">${escapeHTML(entry.label)}</button>`).join('');
+
+  container.innerHTML = `<div class="germany-layout">
+    <section class="card germany-map-card">
+      <header class="card-head">
+        <div class="card-heading">
+          <p class="kicker">Deutschland · aktuell</p>
+          <h2 class="card-title">Wetterkarte</h2>
+        </div>
+        <div class="radar-toolbar">
+          <div class="segmented" role="group" aria-label="Kartenwert wählen">${metricButtons}</div>
+          <span class="map-meta"><i></i>${loaded}/${MAP_CITY_IDS.length} Stationen · ${updatedAt ? `${formatTime(updatedAt)} Uhr` : 'lädt'}</span>
+          <button class="icon-button refresh-button ${state.germanyLoading ? 'is-loading' : ''}" type="button" data-germany-refresh aria-label="Deutschlandkarte aktualisieren" title="Deutschlandkarte aktualisieren">${icon('refresh', 14)}</button>
+        </div>
+      </header>
+      ${germanyMapMarkup()}
+      <div class="map-legend">
+        <div class="map-legend-range"></div>
+        <div class="map-legend-copy"><span>${escapeHTML(metric.label)}</span><strong>${escapeHTML(legendLow)} — ${escapeHTML(legendHigh)}</strong></div>
+        <span class="map-legend-hint">Klicke auf eine Stadt für die volle Vorhersage</span>
+      </div>
+    </section>
+    ${germanyRankingMarkup()}
+  </div>
+  ${germanyHighlightsMarkup()}`;
+}
+
+async function loadGermany(force = false) {
+  const cities = MAP_CITY_IDS.map((id) => CITY_BY_ID[id]).filter(Boolean);
+  if (!cities.length || state.germanyLoading) return;
+  const fresh = Date.now() - state.germanyLoadedAt < 8 * 60 * 1000 && cities.every((city) => mapCityWeather(city.id));
+  if (!force && fresh) {
+    renderGermanyView();
+    return;
+  }
+  state.germanyLoading = true;
+  state.germanyError = null;
+  renderGermanyView();
+  try {
+    const results = await fetchSummaries(cities, force);
+    applySummaries(results);
+    state.germanyLoadedAt = Date.now();
+    state.germanyError = null;
+  } catch (error) {
+    state.germanyError = usefulError(error);
+    console.warn('Brise: Deutschlandkarte konnte nicht geladen werden', error);
+    if (!MAP_CITY_IDS.some((id) => mapCityWeather(id))) {
+      setLiveState('error', 'DWD nicht erreichbar');
+    } else {
+      showToast('Die Karte zeigt den zuletzt geladenen Stand.', { tone: 'warn', icon: 'cloud' });
+    }
+  } finally {
+    state.germanyLoading = false;
+    renderGermanyView();
+    if (state.view === 'germany') setPageLive(Boolean(state.germanyError));
+  }
+}
+
+function updateMapMetric(metricKey) {
+  if (!GERMANY_METRICS[metricKey] || state.germanyMetric === metricKey) return;
+  state.germanyMetric = metricKey;
+  renderGermanyView();
+}
+
+function showMapTooltip(cityId, x, y) {
+  const wrap = $('.germany-map-wrap');
+  const tooltip = $('#mapTooltip');
+  const city = CITY_BY_ID[cityId];
+  if (!wrap || !tooltip || !city) return;
+  const weather = mapCityWeather(cityId);
+  const rect = wrap.getBoundingClientRect();
+  const left = clamp(x - rect.left, 92, rect.width - 92);
+  const top = clamp(y - rect.top, 60, rect.height - 20);
+  const temp = weather ? formatTemp(weather.temperature, state.settings.tempUnit) : '–';
+  const condition = weather ? summaryLabel(city, weather) : 'Keine Daten';
+  const wind = weather ? formatWind(weather.wind_speed_10, state.settings.windUnit, 0) : null;
+  tooltip.innerHTML = `<div class="map-tooltip-title">${escapeHTML(city.name)} <span>${escapeHTML(city.state)}</span></div>
+    <div class="map-tooltip-value">${escapeHTML(temp)} <small>${escapeHTML(condition)}</small></div>
+    <div class="map-tooltip-meta">${weather ? weatherIcon(summaryIconName(city, weather)) : ''}${wind ? `${icon('wind', 9)} ${escapeHTML(wind)}` : 'Keine Stationsdaten'}</div>`;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+  tooltip.hidden = false;
+}
+
+function hideMapTooltip() {
+  const tooltip = $('#mapTooltip');
+  if (tooltip) tooltip.hidden = true;
+}
+
+
+// ---------- Navigation, refresh and app shell ----------
+
+function renderCurrentView() {
+  if (state.view === 'weather') {
+    const city = currentCity();
+    if (state.weather.has(city.id)) renderWeather();
+    else renderWeatherLoading(city);
+  } else if (state.view === 'radar') {
+    renderRadarView();
+  } else if (state.view === 'germany') {
+    renderGermanyView();
+  }
+}
+
+function switchView(view, options = {}) {
+  if (!VIEW_IDS.has(view)) return;
+  const changed = state.view !== view;
+  state.view = view;
+  $$('.nav-item').forEach((button) => {
+    const active = button.dataset.viewTarget === view;
+    button.classList.toggle('is-active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  $$('.view').forEach((section) => {
+    const active = section.dataset.view === view;
+    section.hidden = !active;
+    section.classList.toggle('is-active', active);
+    if (active && changed && !options.silent) {
+      section.classList.remove('view-enter');
+      void section.offsetWidth;
+      section.classList.add('view-enter');
+    }
+  });
+
+  const main = $('#main');
+  if (main && changed) main.scrollTop = 0;
+
+  if (view === 'weather') {
+    const city = currentCity();
+    if (!state.weather.has(city.id) && !state.weatherLoading.has(city.id)) {
+      renderWeatherLoading(city);
+      loadWeather(city.id);
+    } else if (state.weather.has(city.id)) {
+      renderWeather();
+    }
+    const entry = state.weather.get(city.id);
+    setPageLive(Boolean(entry?.bundle?.stale) || state.offline.has(city.id));
+  } else if (view === 'radar') {
+    const city = currentCity();
+    const needsLoad = state.radarCityId !== city.id || !state.radarData || Date.now() - state.radarFetchedAt > 4 * 60 * 1000;
+    if (needsLoad) loadRadar();
+    else {
+      renderRadarView();
+      setPageLive(false);
+    }
+  } else if (view === 'germany') {
+    const needsLoad = !state.germanyLoadedAt || Date.now() - state.germanyLoadedAt > 8 * 60 * 1000;
+    if (needsLoad && !state.germanyLoading) loadGermany();
+    else renderGermanyView();
+  }
+}
+
+function selectCity(cityId, options = {}) {
+  const city = CITY_BY_ID[cityId];
+  if (!city) return;
+  const changed = state.selectedCityId !== cityId;
+  state.selectedCityId = cityId;
+  persistSelectedCity();
+  renderFavorites();
+  if (options.navigate !== false) {
+    if (state.view === 'weather' && changed) {
+      const existing = state.weather.get(cityId);
+      if (existing) {
+        renderWeather();
+        setPageLive(Boolean(existing.bundle?.stale));
+        loadWeather(cityId);
+      } else {
+        renderWeatherLoading(city);
+        loadWeather(cityId);
+      }
+    } else {
+      switchView('weather');
+    }
+  }
+}
+
+function rerenderForSettings() {
+  renderCurrentView();
+}
+
+function refreshAllData() {
+  const city = currentCity();
+  loadWeather(city.id, { force: true });
+  loadFavoriteSummaries(true);
+  if (state.view === 'radar') loadRadar(true);
+  if (state.view === 'germany') loadGermany(true);
+}
+
+function scheduleRefresh() {
+  if (state.refreshTimer) {
+    window.clearInterval(state.refreshTimer);
+    state.refreshTimer = null;
+  }
+  const minutes = Number(state.settings.refreshMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return;
+  state.refreshTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    const city = currentCity();
+    loadWeather(city.id, { force: true, quiet: true });
+    loadFavoriteSummaries(true);
+    if (state.view === 'radar') loadRadar(true);
+    if (state.view === 'germany') loadGermany(true);
+  }, minutes * 60 * 1000);
+}
+
+async function tauriWindow() {
+  const tauri = window.__TAURI__;
+  const api = tauri?.window;
+  if (!api?.getCurrentWindow) return null;
+  try {
+    return api.getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
+
+async function updateMaximizeIcon() {
+  const button = $('#windowMaximize');
+  if (!button) return;
+  const win = await tauriWindow();
+  if (!win) return;
+  try {
+    const maximized = await win.isMaximized();
+    button.innerHTML = icon(maximized ? 'maximizeRestore' : 'maximize', 12);
+    button.setAttribute('aria-label', maximized ? 'Wiederherstellen' : 'Maximieren');
+    button.title = maximized ? 'Wiederherstellen' : 'Maximieren';
+  } catch {
+    // Window API unavailable; keep the default icon.
+  }
+}
+
+async function windowAction(action) {
+  const win = await tauriWindow();
+  if (!win) return;
+  try {
+    if (action === 'minimize') await win.minimize();
+    else if (action === 'maximize') {
+      await win.toggleMaximize();
+      window.setTimeout(updateMaximizeIcon, 120);
+    } else if (action === 'close') await win.close();
+  } catch (error) {
+    console.warn('Brise: Fensteraktion fehlgeschlagen', error);
+  }
+}
+
+function injectStaticIcons() {
+  $$('[data-ui-icon]').forEach((node) => {
+    const name = node.dataset.uiIcon;
+    if (name) node.innerHTML = icon(name, 16);
+  });
+}
+
+function handleWeatherClick(event) {
+  const favorite = event.target.closest('[data-toggle-favorite]');
+  if (favorite) {
+    toggleFavorite(favorite.dataset.toggleFavorite);
+    return;
+  }
+  if (event.target.closest('[data-open-alerts]')) {
+    openAlertsModal();
+    return;
+  }
+  if (event.target.closest('[data-open-radar]')) {
+    switchView('radar');
+    return;
+  }
+  if (event.target.closest('[data-refresh-weather]')) {
+    loadWeather(currentCity().id, { force: true });
+    return;
+  }
+  if (event.target.closest('[data-retry-weather]')) {
+    loadWeather(currentCity().id, { force: true });
+    return;
+  }
+  const range = event.target.closest('[data-range]');
+  if (range) {
+    state.trendRange = range.dataset.range;
+    renderWeather();
+    return;
+  }
+  const day = event.target.closest('[data-day-key]');
+  if (day) openDayModal(day.dataset.dayKey);
+}
+
+function handleRadarClick(event) {
+  const renderer = state.radarRenderer;
+  if (event.target.closest('[data-radar-retry]')) {
+    loadRadar(true);
+    return;
+  }
+  if (event.target.closest('#radarPlay') && renderer) {
+    renderer.toggle();
+    const frame = renderer.frames[renderer.index];
+    if (frame) updateRadarFrameUI(frame, renderer.index);
+    return;
+  }
+  if (event.target.closest('#radarNow') && renderer) {
+    renderer.pause();
+    renderer.setFrame(renderer.findLiveIndex());
+    const frame = renderer.frames[renderer.index];
+    if (frame) updateRadarFrameUI(frame, renderer.index);
+  }
+}
+
+function handleGermanyClick(event) {
+  const metric = event.target.closest('[data-germany-metric]');
+  if (metric) {
+    updateMapMetric(metric.dataset.germanyMetric);
+    return;
+  }
+  if (event.target.closest('[data-germany-refresh]') || event.target.closest('[data-germany-retry]')) {
+    loadGermany(true);
+    return;
+  }
+  const rankCity = event.target.closest('[data-rank-city]');
+  if (rankCity) {
+    selectCity(rankCity.dataset.rankCity);
+    return;
+  }
+  const mapCity = event.target.closest('[data-map-city]');
+  if (mapCity) selectCity(mapCity.dataset.mapCity);
+}
+
+function bindEvents() {
+  $$('.nav-item').forEach((button) => {
+    button.addEventListener('click', () => switchView(button.dataset.viewTarget));
+  });
+
+  $('#openSearch')?.addEventListener('click', () => openSearch());
+  $('#sidebarSearch')?.addEventListener('click', () => openSearch());
+  $('#openSettings')?.addEventListener('click', () => openSettingsModal());
+  $('#openAbout')?.addEventListener('click', () => openAboutModal());
+  $('#discoverGermany')?.addEventListener('click', () => switchView('germany'));
+
+  $('#windowMinimize')?.addEventListener('click', () => windowAction('minimize'));
+  $('#windowMaximize')?.addEventListener('click', () => windowAction('maximize'));
+  $('#windowClose')?.addEventListener('click', () => windowAction('close'));
+
+  const favorites = $('#favoritesList');
+  favorites?.addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-remove-favorite]');
+    if (remove) {
+      event.stopPropagation();
+      removeFavorite(remove.dataset.removeFavorite);
+      return;
+    }
+    const row = event.target.closest('[data-favorite-city]');
+    if (row) selectCity(row.dataset.favoriteCity);
+  });
+  favorites?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest('[data-favorite-city]');
+    if (!row) return;
+    event.preventDefault();
+    selectCity(row.dataset.favoriteCity);
+  });
+
+  $('#weatherContent')?.addEventListener('click', handleWeatherClick);
+  $('#radarContent')?.addEventListener('click', handleRadarClick);
+  $('#radarContent')?.addEventListener('input', (event) => {
+    if (event.target.id !== 'radarRange') return;
+    const renderer = state.radarRenderer;
+    if (!renderer) return;
+    renderer.pause();
+    renderer.setFrame(Number(event.target.value));
+  });
+  $('#germanyContent')?.addEventListener('click', handleGermanyClick);
+
+  $('#germanyContent')?.addEventListener('pointerover', (event) => {
+    const cityGroup = event.target.closest('[data-map-city]');
+    if (!cityGroup) return;
+    showMapTooltip(cityGroup.dataset.mapCity, event.clientX, event.clientY);
+  });
+  $('#germanyContent')?.addEventListener('pointermove', (event) => {
+    const cityGroup = event.target.closest('[data-map-city]');
+    if (!cityGroup) return;
+    showMapTooltip(cityGroup.dataset.mapCity, event.clientX, event.clientY);
+  });
+  $('#germanyContent')?.addEventListener('pointerout', (event) => {
+    const cityGroup = event.target.closest('[data-map-city]');
+    if (!cityGroup) return;
+    if (event.relatedTarget && cityGroup.contains(event.relatedTarget)) return;
+    hideMapTooltip();
+  });
+  $('#germanyContent')?.addEventListener('focusin', (event) => {
+    const cityGroup = event.target.closest('[data-map-city]');
+    if (!cityGroup) return;
+    const rect = cityGroup.getBoundingClientRect();
+    showMapTooltip(cityGroup.dataset.mapCity, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  });
+  $('#germanyContent')?.addEventListener('focusout', (event) => {
+    if (event.target.closest('[data-map-city]')) hideMapTooltip();
+  });
+  $('#germanyContent')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const cityGroup = event.target.closest('[data-map-city]');
+    if (!cityGroup) return;
+    event.preventDefault();
+    selectCity(cityGroup.dataset.mapCity);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    const active = document.activeElement;
+    const typing = active && (['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) || active.isContentEditable);
+    const mod = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    if (mod && key === 'k') {
+      event.preventDefault();
+      openSearch();
+      return;
+    }
+    if (mod && key === ',') {
+      event.preventDefault();
+      openSettingsModal();
+      return;
+    }
+    if (mod && key === 'r') {
+      event.preventDefault();
+      refreshAllData();
+      return;
+    }
+    if (event.key === 'Escape') {
+      if (state.overlayOpen) closeOverlay();
+      else hideMapTooltip();
+      return;
+    }
+    if (typing || state.overlayOpen) return;
+    if (event.key === '1') switchView('weather');
+    else if (event.key === '2') switchView('radar');
+    else if (event.key === '3') switchView('germany');
+    else if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      openSearch();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      const entry = state.weather.get(currentCity().id);
+      const age = entry ? Date.now() - entry.at : Infinity;
+      if (age > 10 * 60 * 1000) loadWeather(currentCity().id, { quiet: true });
+    }
+  });
+
+  const media = window.matchMedia?.('(prefers-color-scheme: light)');
+  media?.addEventListener?.('change', () => {
+    if (state.settings.theme === 'system') applyTheme();
+  });
+
+  window.addEventListener('online', () => {
+    showToast('Verbindung wieder da. Brise lädt frische DWD-Daten.', { icon: 'refresh' });
+    refreshAllData();
+  });
+
+  window.addEventListener('offline', () => {
+    setLiveState('stale', 'Offline-Daten');
+    showToast('Keine Internetverbindung. Brise zeigt den letzten Stand.', { tone: 'warn', icon: 'cloud' });
+  });
+}
+
+function startApp() {
+  injectStaticIcons();
+  applyTheme();
+  updateClock();
+  window.setInterval(updateClock, 1000);
+  renderFavorites();
+  bindEvents();
+  scheduleRefresh();
+  const city = currentCity();
+  loadWeather(city.id);
+  loadFavoriteSummaries();
+  updateMaximizeIcon();
+}
+
+startApp();

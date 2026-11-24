@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="de" data-theme="night">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#081018" />
+    <meta name="description" content="Brise — modernes DWD-Wetter für deutsche Städte, mit Regenradar, Warnungen und Vorhersagen." />
+    <title>Brise — Wetter für Deutschland</title>
+    <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" />
+    <link rel="preload" href="./fonts/InterVariable.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="./fonts/SpaceGrotesk-Medium.otf" as="font" type="font/otf" crossorigin />
+    <link rel="stylesheet" href="./styles/main.css" />
+    <link rel="stylesheet" href="./styles/weather.css" />
+    <link rel="stylesheet" href="./styles/radar.css" />
+    <link rel="stylesheet" href="./styles/germany.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-glow ambient-glow-a"></div>
+        <div class="ambient-glow ambient-glow-b"></div>
+        <div class="ambient-grid"></div>
+        <div class="ambient-noise"></div>
+      </div>
+
+      <header class="titlebar" id="titlebar" data-tauri-drag-region>
+        <div class="brand" data-tauri-drag-region aria-label="Brise">
+          <img src="./assets/logo.svg" alt="" class="brand-mark" draggable="false" />
+          <span class="brand-name">brise<span class="brand-degree">°</span></span>
+          <span class="brand-tag">DWD</span>
+        </div>
+
+        <nav class="primary-nav" aria-label="Hauptansichten">
+          <button class="nav-item is-active" type="button" data-view-target="weather" aria-current="page">
+            <span data-ui-icon="weather"></span><span>Wetter</span>
+          </button>
+          <button class="nav-item" type="button" data-view-target="radar">
+            <span data-ui-icon="radar"></span><span>Radar</span>
+          </button>
+          <button class="nav-item" type="button" data-view-target="germany">
+            <span data-ui-icon="map"></span><span>Deutschland</span>
+          </button>
+        </nav>
+
+        <div class="titlebar-tools">
+          <div class="live-pill" id="livePill" title="Datenquelle: Deutscher Wetterdienst">
+            <i class="live-dot"></i><span id="liveLabel">DWD aktuell</span>
+          </div>
+          <div class="title-clock" id="titleClock" title="Ortszeit in Deutschland">
+            <span id="titleTime">--:--</span>
+            <span id="titleDate">Heute</span>
+          </div>
+          <button class="command-trigger" id="openSearch" type="button" aria-label="Ort oder Befehl suchen">
+            <span data-ui-icon="search"></span>
+            <span class="command-placeholder">Suchen</span>
+            <kbd>Strg K</kbd>
+          </button>
+          <button class="icon-button titlebar-button" id="openSettings" type="button" aria-label="Einstellungen" title="Einstellungen">
+            <span data-ui-icon="settings"></span>
+          </button>
+          <div class="window-controls" aria-label="Fenstersteuerung">
+            <button type="button" class="window-button" id="windowMinimize" aria-label="Minimieren" title="Minimieren"><span data-ui-icon="minimize"></span></button>
+            <button type="button" class="window-button" id="windowMaximize" aria-label="Maximieren" title="Maximieren"><span data-ui-icon="maximize"></span></button>
+            <button type="button" class="window-button window-close" id="windowClose" aria-label="Schließen" title="Schließen"><span data-ui-icon="close"></span></button>
+          </div>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="sidebar" aria-label="Gespeicherte Orte">
+          <div class="sidebar-top">
+            <button type="button" class="sidebar-search" id="sidebarSearch">
+              <span class="sidebar-search-icon" data-ui-icon="search"></span>
+              <span>Ort hinzufügen</span>
+              <kbd>+</kbd>
+            </button>
+            <div class="sidebar-heading">
+              <span>Meine Orte</span>
+              <span class="count" id="favoriteCount">–</span>
+            </div>
+            <div class="favorites-list" id="favoritesList">
+              <div class="favorite-skeleton"></div>
+              <div class="favorite-skeleton"></div>
+              <div class="favorite-skeleton"></div>
+              <div class="favorite-skeleton"></div>
+            </div>
+          </div>
+
+          <div class="sidebar-bottom">
+            <button class="discover-card" id="discoverGermany" type="button">
+              <span class="discover-icon" data-ui-icon="map"></span>
+              <span class="discover-copy">
+                <strong>Deutschland entdecken</strong>
+                <small>Wetter aus 21 Städten</small>
+              </span>
+              <span class="discover-arrow" data-ui-icon="arrowUpRight"></span>
+            </button>
+            <div class="source-card">
+              <div class="source-head">
+                <span class="source-mark">DWD</span>
+                <span class="source-live"><i></i> Offene Daten</span>
+              </div>
+              <p>Amtliche Wetterdaten, direkt vom Deutschen Wetterdienst über Bright Sky.</p>
+              <div class="source-footer">
+                <span>Kostenlos & ohne API-Schlüssel</span>
+                <button type="button" id="openAbout" aria-label="Über die Datenquelle">Info</button>
+              </div>
+            </div>
+            <div class="sidebar-credit">Brise 1.0 · für Linux & Wayland gebaut</div>
+          </div>
+        </aside>
+
+        <main class="main" id="main">
+          <section class="view is-active" id="view-weather" data-view="weather">
+            <div class="view-inner" id="weatherContent">
+              <div class="initial-loader">
+                <span class="loader-orbit"></span>
+                <span>Der Himmel über Deutschland wird geladen …</span>
+              </div>
+            </div>
+          </section>
+          <section class="view" id="view-radar" data-view="radar" hidden>
+            <div class="view-inner" id="radarContent"></div>
+          </section>
+          <section class="view" id="view-germany" data-view="germany" hidden>
+            <div class="view-inner" id="germanyContent"></div>
+          </section>
+        </main>
+      </div>
+
+      <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="false"></div>
+      <div class="overlay-root" id="overlayRoot"></div>
+    </div>
+
+    <noscript>
+      <div class="noscript">Brise benötigt JavaScript, um das Wetter vom DWD anzuzeigen.</div>
+    </noscript>
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
