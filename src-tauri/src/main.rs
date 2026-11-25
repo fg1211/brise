@@ -767,6 +767,23 @@ fn place_on_secondary_monitor(window: &tauri::WebviewWindow) {
     }
 }
 
+/// WebKitGTK dauerhaft auf Hardwarebeschleunigung trimmen. Das betrifft auch
+/// das Scrollen: Compositing, 2D-Canvas und WebGL laufen dann über die GPU.
+#[cfg(target_os = "linux")]
+fn enable_gpu_acceleration(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|webview| {
+        use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+
+        let webview = webview.inner();
+        let Some(settings) = webview.settings() else {
+            return;
+        };
+        settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Always);
+        settings.set_enable_webgl(true);
+        settings.set_enable_smooth_scrolling(true);
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -774,6 +791,8 @@ fn main() {
             // composites translucent page layers against the desktop.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_background_color(Some(tauri::window::Color(7, 15, 23, 255)));
+                #[cfg(target_os = "linux")]
+                enable_gpu_acceleration(&window);
                 place_on_secondary_monitor(&window);
                 let _ = window.show();
             }
