@@ -8,12 +8,12 @@ url="https://github.com/fg1211/brise"
 license=('MIT')
 depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme' 'desktop-file-utils')
 makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gtk3' 'webkit2gtk-4.1' 'librsvg' 'libsoup3' 'libayatana-appindicator')
-optdepends=('hyprland: automatische Fensterplatzierung auf DP-2')
+optdepends=('hyprland: Fensterplatzierung auf dem Cursor-Monitor')
 # LTO bricht die Assembly-Objekte der TLS-Bibliothek ring beim Linken.
 options=('!lto')
-_commit=6aeddc328367d159afb0fc78c757e29237211ebc
+_commit=1194e286fc347697ee94ea2ca6f648514c2159b8
 source=("$pkgname-$_commit.tar.gz::https://github.com/fg1211/brise/archive/$_commit.tar.gz")
-sha256sums=('5c2d31ad1a8672d038431c948de8a57e061d8e4db37691ddee42f72083108c27')
+sha256sums=('e99640377731484ca01a9fc9c3ac2f7a1097ef7ac48c0cf5d30986de9993bf4d')
 
 build() {
   cd "$srcdir/$pkgname-$_commit/src-tauri"
