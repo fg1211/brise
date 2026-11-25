@@ -22,3 +22,24 @@
 html[data-motion='off'] .main {
   will-change: auto;
 }
+
+/* Während des Scrollens werden nur die teuren, aber nicht notwendigen
+   Effekte pausiert. Das Glasdesign bleibt erhalten, der Compositor bekommt
+   jedoch keine fortlaufende Filter- und Animationsarbeit zusätzlich zum Scrollen. */
+html[data-scrolling='on'] .ambient::before,
+html[data-scrolling='on'] .ambient::after,
+html[data-scrolling='on'] .ambient-glow,
+html[data-scrolling='on'] .hero-scene-art *,
+html[data-scrolling='on'] .loader-orbit,
+html[data-scrolling='on'] .live-dot {
+  animation-play-state: paused !important;
+}
+
+html[data-scrolling='on'] .card,
+html[data-scrolling='on'] .sidebar,
+html[data-scrolling='on'] .titlebar,
+html[data-scrolling='on'] .modal,
+html[data-scrolling='on'] .toast {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
