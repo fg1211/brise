@@ -2304,3 +2304,105 @@ html[data-theme='day'] .radar-teaser {
     grid-template-columns: 1fr;
   }
 }
+
+/* Feinschliff: Wetteransicht */
+.day-chart-dot {
+  fill: var(--chart-line);
+  stroke: var(--panel-solid);
+  stroke-width: 1;
+}
+
+.chart-temp-float {
+  fill: var(--text);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(7, 17, 24, 0.75);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+html[data-theme='day'] .chart-temp-float {
+  stroke: rgba(255, 255, 255, 0.85);
+}
+
+.hour-item.is-now {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.hourly-rail-hint,
+.chart-range-hint {
+  font-size: 9px;
+}
+
+/* Die Sidebar lässt bei geteilten Fenstern weniger Inhalt übrig als der
+   reine Viewport vermuten lässt – hier zählt die Breite des Inhalts. */
+@container (max-width: 800px) {
+  .hero-card,
+  .now-card,
+  .trend-card,
+  .sun-card,
+  .forecast-card,
+  .side-stack {
+    grid-column: span 12;
+  }
+
+  .now-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hero-temp {
+    font-size: clamp(64px, 9vw, 88px);
+  }
+
+  .hero-reading {
+    padding-top: 18px;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 900px) {
+  .now-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .forecast-row {
+    grid-template-columns: minmax(52px, 1fr) 28px 44px 44px;
+    gap: 6px;
+  }
+
+  .forecast-row .fc-condition,
+  .forecast-row .fc-bar {
+    display: none;
+  }
+}
+
+@container (max-width: 700px) {
+  .forecast-row {
+    grid-template-columns: minmax(52px, 1fr) 28px 44px 44px;
+    gap: 6px;
+  }
+
+  .forecast-row .fc-condition,
+  .forecast-row .fc-bar {
+    display: none;
+  }
+}
+
+@media (max-height: 640px) {
+  .trend-chart-container {
+    min-height: 150px;
+  }
+
+  .hero-card {
+    min-height: 360px;
+  }
+
+  .sun-arc svg {
+    max-height: 112px;
+  }
+}
