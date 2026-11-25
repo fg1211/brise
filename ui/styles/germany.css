@@ -624,3 +624,92 @@ html[data-theme='day'] .map-tooltip {
     display: none;
   }
 }
+
+/* Feinschliff: Karten und globale Akzente */
+.map-city .city-value,
+.map-city .city-unit {
+  paint-order: stroke;
+  stroke: rgba(7, 17, 24, 0.82);
+  stroke-width: 2.2px;
+  stroke-linejoin: round;
+}
+
+.map-city .city-unit {
+  stroke-width: 1.6px;
+}
+
+html[data-theme='day'] .map-city .city-value,
+html[data-theme='day'] .map-city .city-unit {
+  stroke: rgba(255, 255, 255, 0.82);
+}
+
+.map-tooltip {
+  max-width: min(210px, calc(100% - 16px));
+}
+
+.map-tooltip.is-below {
+  transform: translate(-50%, 13px);
+}
+
+.rank-state {
+  font-size: 9px;
+}
+
+@media (max-height: 640px) {
+  .germany-map-wrap,
+  .germany-map-svg {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 1000px) {
+  :root {
+    --sidebar-width: 206px;
+  }
+}
+
+html[data-theme='day'] .action-button.primary,
+html[data-theme='day'] .action-button.primary:hover,
+html[data-theme='day'] .radar-play {
+  color: #04231e;
+}
+
+.nav-item.is-active,
+.segmented button.is-active,
+.command-item:hover,
+.command-item.is-selected {
+  background: var(--accent-soft);
+}
+
+.nav-item.is-active {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.favorite-row.is-active,
+.forecast-row.is-today {
+  background: var(--accent-soft);
+  border-color: var(--line-strong);
+}
+
+/* Große Flächen sollen nicht beim Hovern „wackeln“. */
+.card:hover {
+  transform: none;
+}
+
+.hero-card:hover,
+.tip-card:hover {
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  .main {
+    scroll-behavior: auto !important;
+  }
+
+  .hero-scene-art .art-cloud,
+  .hero-scene-art .art-rain line,
+  .hero-scene-art .art-snow circle {
+    will-change: auto;
+  }
+}
