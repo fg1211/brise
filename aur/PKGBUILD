@@ -1,7 +1,7 @@
 # Maintainer: Felix <brise@users.noreply.github.com>
 pkgname=brise
-pkgver=1.0.0
-pkgrel=2
+pkgver=1.0.2
+pkgrel=1
 pkgdesc="Moderne DWD-Wetter-App für deutsche Städte, optimiert für Wayland und Hyprland"
 arch=('x86_64')
 url="https://github.com/fg1211/brise"
