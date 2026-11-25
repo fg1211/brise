@@ -1,6 +1,6 @@
 [package]
 name = "brise"
-version = "1.0.3"
+version = "1.0.4"
 description = "Brise — modernes DWD-Wetter für deutsche Städte"
 authors = ["Brise"]
 edition = "2021"
@@ -18,6 +18,9 @@ chrono = "0.4"
 futures = "0.3"
 base64 = "0.22"
 flate2 = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
 
 [profile.release]
 strip = true
