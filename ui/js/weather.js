@@ -79,6 +79,7 @@ export function escapeHTML(value = '') {
 
 export function toDate(value) {
   if (value instanceof Date) return value;
+  if (value === null || value === undefined || value === '') return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -131,7 +132,12 @@ export function formatDateShort(value = new Date()) {
 export function formatRelative(value, now = new Date()) {
   const date = toDate(value);
   if (!date) return 'gerade eben';
-  const minutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60000));
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60000);
+  if (minutes < -1) {
+    const ahead = Math.ceil(-minutes / 60);
+    if (ahead <= 1) return 'in Kürze';
+    return ahead === 1 ? 'in 1 Stunde' : `in ${ahead} Stunden`;
+  }
   if (minutes < 1) return 'gerade eben';
   if (minutes === 1) return 'vor 1 Minute';
   if (minutes < 60) return `vor ${minutes} Minuten`;
@@ -260,11 +266,12 @@ export function feelsLikeCelsius(tempC, humidity, windKmh) {
     return 13.12 + 0.6215 * tempC - 11.37 * v ** 0.16 + 0.3965 * tempC * v ** 0.16;
   }
   if (tempC >= 26 && finite(humidity)) {
+    const hum = Math.max(0, Math.min(100, humidity));
     const f = (tempC * 9) / 5 + 32;
-    const hi = -42.379 + 2.04901523 * f + 10.14333127 * humidity
-      - 0.22475541 * f * humidity - 0.00683783 * f * f
-      - 0.05481717 * humidity * humidity + 0.00122874 * f * f * humidity
-      + 0.00085282 * f * humidity * humidity - 0.00000199 * f * f * humidity * humidity;
+    const hi = -42.379 + 2.04901523 * f + 10.14333127 * hum
+      - 0.22475541 * f * hum - 0.00683783 * f * f
+      - 0.05481717 * hum * hum + 0.00122874 * f * f * hum
+      + 0.00085282 * f * hum * hum - 0.00000199 * f * f * hum * hum;
     return ((hi - 32) * 5) / 9;
   }
   return tempC;
@@ -275,9 +282,10 @@ export function solarTimes(value, lat, lon) {
   const key = localDayKey(date);
   const [year, month, day] = key.split('-').map(Number);
   const start = Date.UTC(year, month - 1, day);
-  const dayOfYear = Math.floor((start - Date.UTC(year, 0, 0)) / 86400000);
+  const dayOfYear = Math.floor((start - Date.UTC(year, 0, 1)) / 86400000) + 1;
+  const daysInYear = (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000;
   const rad = Math.PI / 180;
-  const gamma = (2 * Math.PI / 365) * (dayOfYear - 1 + 0.5);
+  const gamma = (2 * Math.PI / daysInYear) * (dayOfYear - 0.5);
   const eqTime = 229.18 * (
     0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma)
     - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma)
@@ -417,12 +425,16 @@ export function buildModel(bundle, city, settings = DEFAULT_SETTINGS) {
       if (!timestamp || !finite(record.temperature)) return null;
       const parts = localParts(timestamp);
       const hourNumber = Number(parts.hour);
-      const icon = record.icon || iconForCondition(record.condition, record.cloud_cover, nightNow);
+      const hourSun = solarTimes(timestamp, city.lat, city.lon);
+      const hourNight = hourSun.sunrise && hourSun.sunset
+        ? timestamp < hourSun.sunrise || timestamp >= hourSun.sunset
+        : nightNow;
+      const icon = record.icon || iconForCondition(record.condition, record.cloud_cover, hourNight);
       return {
         timestamp,
         dayKey: localDayKey(timestamp),
         hourNumber,
-        isDaytime: hourNumber >= 7 && hourNumber < 21,
+        isDaytime: !hourNight,
         tempC: record.temperature,
         apparentC: feelsLikeCelsius(record.temperature, record.relative_humidity, record.wind_speed),
         icon,
