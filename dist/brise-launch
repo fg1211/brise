@@ -1,22 +1,66 @@
 #!/usr/bin/env bash
-# Brise launcher — puts the window on a secondary monitor and tiles it on Hyprland.
-# Set BRISE_MONITOR to override the target monitor (default: DP-2).
+# Brise-Launcher für Hyprland: öffnet das Fenster geteilt auf dem Monitor,
+# auf dem sich der Mauszeiger gerade befindet. Die genaue Position bestimmt
+# das Hyprland-Layout. Mit BRISE_MONITOR kann ein Monitor vorgegeben werden.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="${BRISE_BIN:-$here/brise}"
-MONITOR="${BRISE_MONITOR:-DP-2}"
 
-# On Hyprland, register the window rule *before* the app spawns so the window
-# never flashes up on the primary monitor (where a game may be running).
 if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-  hyprctl eval "hl.window_rule({name=\"brise-secondary\", match={class=\"brise\"}, monitor=\"$MONITOR\", tile=true})" >/dev/null 2>&1 || true
+  cursor="$(hyprctl cursorpos -j 2>/dev/null || true)"
+  if command -v jq >/dev/null 2>&1 && [ -n "$cursor" ]; then
+    cx="$(jq -r '.x // empty' <<<"$cursor")"
+    cy="$(jq -r '.y // empty' <<<"$cursor")"
+    if [ -n "$cx" ] && [ -n "$cy" ]; then
+      target="$(hyprctl monitors -j 2>/dev/null | jq -r --argjson x "$cx" --argjson y "$cy" '
+        [.[] | select(.x <= $x and $x < .x + .width and .y <= $y and $y < .y + .height)] | first | .name // empty' || true)"
+    fi
+  fi
+
+  if [ -z "${target:-}" ]; then
+    cursor_plain="$(hyprctl cursorpos 2>/dev/null || true)"
+    cx="${cx:-${cursor_plain%%,*}}"
+    cy="${cy:-${cursor_plain#*,}}"
+    target="$(hyprctl monitors 2>/dev/null | awk -v px="${cx:-0}" -v py="${cy:-0}" '
+      /^Monitor / { name = $2 }
+      /^[[:space:]]*[0-9]+x[0-9]+@[^ ]+ at / {
+        dims = $1
+        sub(/@.*/, "", dims)
+        split(dims, d, "x")
+        split($3, p, "x")
+        if (px >= p[1] && px < p[1] + d[1] && py >= p[2] && py < p[2] + d[2]) { print name; exit }
+      }' || true)"
+  fi
 fi
 
-# Prefer the native Wayland backend; WebKitGTK renders sharper there and the
-# compositor keeps full control over placement.
+MONITOR="${BRISE_MONITOR:-${target:-}}"
+
+# Die Regel wird vor dem Start registriert, damit das Fenster nicht kurz
+# auf dem falschen Monitor auftaucht. Alte Regeln früherer Versionen
+# deaktivieren wir zuerst, damit sich die Effekte nicht überlagern.
+if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && [ -n "$MONITOR" ]; then
+  hyprctl eval '
+    if _G.briseCursorRule then _G.briseCursorRule:set_enabled(false) end;
+    local old = hl.window_rule({name="brise-secondary"});
+    if old then old:set_enabled(false) end;
+    _G.briseCursorRule = hl.window_rule({
+      name="brise-cursor",
+      match={class="brise"},
+      tile=true,
+      monitor="'"$MONITOR"'",
+      animation="popin 80%"
+    })' >/dev/null 2>&1 || true
+fi
+
+# Native Wayland-Darstellung: WebKitGTK zeichnet dort schärfer und der
+# Compositor behält die Kontrolle über die Platzierung.
 if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
   export GDK_BACKEND=wayland
+fi
+
+if [ -n "$MONITOR" ]; then
+  export BRISE_MONITOR="$MONITOR"
 fi
 
 exec "$BIN" "$@"
