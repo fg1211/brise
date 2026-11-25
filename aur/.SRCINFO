@@ -1,7 +1,7 @@
 pkgbase = brise
 	pkgdesc = Moderne DWD-Wetter-App für deutsche Städte, optimiert für Wayland und Hyprland
 	pkgver = 1.0.0
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/fg1211/brise
 	arch = x86_64
 	license = MIT
@@ -20,7 +20,7 @@ pkgbase = brise
 	depends = desktop-file-utils
 	optdepends = hyprland: automatische Fensterplatzierung auf DP-2
 	options = !lto
-	source = brise-1.0.0.tar.gz::https://github.com/fg1211/brise/archive/refs/tags/v1.0.0.tar.gz
-	sha256sums = ec1e9d80d01cae9805a5a0e15f5a2ea02a7282f47551fdefd9f380903e7842d0
+	source = brise-6aeddc328367d159afb0fc78c757e29237211ebc.tar.gz::https://github.com/fg1211/brise/archive/6aeddc328367d159afb0fc78c757e29237211ebc.tar.gz
+	sha256sums = 5c2d31ad1a8672d038431c948de8a57e061d8e4db37691ddee42f72083108c27
 
 pkgname = brise
