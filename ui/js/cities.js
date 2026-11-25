@@ -78,14 +78,16 @@ function loadCustomCities() {
   try {
     const stored = JSON.parse(localStorage.getItem(CUSTOM_CITIES_KEY) || '[]');
     if (!Array.isArray(stored)) return [];
-    return stored.filter((city) => (
+    const valid = stored.filter((city) => (
       city
       && typeof city.id === 'string'
       && city.id.startsWith('ort-')
       && typeof city.name === 'string'
       && Number.isFinite(city.lat)
       && Number.isFinite(city.lon)
-    )).map((city) => ({
+    ));
+    const unique = new Map(valid.map((city) => [city.id, city]));
+    return [...unique.values()].map((city) => ({
       id: city.id,
       name: city.name,
       state: typeof city.state === 'string' ? city.state : 'Deutschland',
@@ -115,9 +117,12 @@ export function registerCity(place) {
     lon: Number(place.lon),
     custom: true,
   };
-  if (!city.name || !Number.isFinite(city.lat) || !Number.isFinite(city.lon)) return null;
+  if (!city.name || !Number.isFinite(city.lat) || !Number.isFinite(city.lon)
+    || city.lat < -90 || city.lat > 90 || city.lon < -180 || city.lon > 180) return null;
 
-  CUSTOM_CITIES.push(city);
+  const existing = CUSTOM_CITIES.findIndex((entry) => entry.id === city.id);
+  if (existing >= 0) CUSTOM_CITIES[existing] = city;
+  else CUSTOM_CITIES.push(city);
   CITY_BY_ID[city.id] = city;
   try {
     localStorage.setItem(CUSTOM_CITIES_KEY, JSON.stringify(CUSTOM_CITIES));
