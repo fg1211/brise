@@ -9,8 +9,9 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration as StdDuration;
+use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, Position, Size};
 
 const BRIGHT_SKY: &str = "https://api.brightsky.dev";
@@ -20,6 +21,7 @@ const PLACE_CACHE_SECONDS: i64 = 7 * 24 * 60 * 60;
 const RADAR_MAX_FRAMES: usize = 31;
 
 static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
+static CACHE_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn http() -> &'static reqwest::Client {
     HTTP.get_or_init(|| {
@@ -28,8 +30,19 @@ fn http() -> &'static reqwest::Client {
             .timeout(StdDuration::from_secs(28))
             .connect_timeout(StdDuration::from_secs(8))
             .build()
-            .expect("failed to build HTTP client")
+            .unwrap_or_else(|_| reqwest::Client::new())
     })
+}
+
+/// Kurzer, stabiler Name für Cache-Dateien – ohne Kollisionen durch
+/// Sonderzeichen oder unterschiedliche Orte mit gleichem Anfang.
+fn cache_key(value: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in value.trim().to_lowercase().bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -116,9 +129,21 @@ fn cache_age(value: &Value) -> i64 {
 
 fn write_cache(path: &PathBuf, value: &Value) {
     if let Ok(raw) = serde_json::to_vec(value) {
-        let tmp = path.with_extension("json.tmp");
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let sequence = CACHE_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let tmp = path.with_extension(format!(
+            "json.tmp.{}.{}.{}",
+            std::process::id(),
+            nonce,
+            sequence
+        ));
         if fs::write(&tmp, raw).is_ok() {
-            let _ = fs::rename(tmp, path);
+            if fs::rename(&tmp, path).is_err() {
+                let _ = fs::remove_file(&tmp);
+            }
         }
     }
 }
@@ -137,7 +162,9 @@ fn active_alerts(mut value: Value) -> Value {
                 .get("expires")
                 .and_then(Value::as_str)
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok());
-            expires.map(|t| t.timestamp() > Utc::now().timestamp() - 300).unwrap_or(true)
+            expires
+                .map(|t| t.timestamp() > Utc::now().timestamp())
+                .unwrap_or(false)
         });
     }
     value
@@ -189,7 +216,12 @@ async fn fetch_alerts(city: &CityRequest) -> Result<Value, String> {
     .await
 }
 
-fn build_bundle(current: Value, hourly: Value, alerts: Result<Value, String>) -> Value {
+fn build_bundle(
+    current: Value,
+    hourly: Value,
+    alerts: Result<Value, String>,
+    cached: Option<&Value>,
+) -> Value {
     let current_weather = current
         .get("weather")
         .cloned()
@@ -209,7 +241,6 @@ fn build_bundle(current: Value, hourly: Value, alerts: Result<Value, String>) ->
 
     let (alert_records, alerts_available) = match alerts {
         Ok(value) => {
-            let value = active_alerts(value);
             (
                 value
                     .get("alerts")
@@ -220,11 +251,17 @@ fn build_bundle(current: Value, hourly: Value, alerts: Result<Value, String>) ->
         }
         Err(err) => {
             eprintln!("[brise] Warnungen konnten nicht geladen werden: {err}");
-            (Value::Array(Vec::new()), false)
+            let fallback = cached
+                .and_then(|value| value.get("alerts").cloned())
+                .unwrap_or_else(|| Value::Array(Vec::new()));
+            let available = cached
+                .and_then(|value| value.get("alerts_available").and_then(Value::as_bool))
+                .unwrap_or(false);
+            (fallback, available)
         }
     };
 
-    json!({
+    active_alerts(json!({
         "fetched_at": Utc::now().timestamp(),
         "stale": false,
         "current": current_weather,
@@ -233,7 +270,7 @@ fn build_bundle(current: Value, hourly: Value, alerts: Result<Value, String>) ->
         "sources": hourly_sources,
         "alerts": alert_records,
         "alerts_available": alerts_available,
-    })
+    }))
 }
 
 #[tauri::command]
@@ -263,7 +300,7 @@ async fn get_weather(
 
     match (current, hourly) {
         (Ok(current), Ok(hourly)) => {
-            let bundle = build_bundle(current, hourly, alerts);
+            let bundle = build_bundle(current, hourly, alerts, cached.as_ref());
             if let Some(path) = path {
                 write_cache(&path, &bundle);
             }
@@ -301,30 +338,36 @@ fn decode_radar_frame(
     let compressed = base64::engine::general_purpose::STANDARD
         .decode(encoded.as_bytes())
         .ok()?;
-    let mut decoder = ZlibDecoder::new(compressed.as_slice());
-    let mut raw = Vec::with_capacity(full_width * full_height * 2);
+    let expected = full_width * full_height * 2;
+    let mut decoder = ZlibDecoder::new(compressed.as_slice()).take(expected as u64 + 1);
+    let mut raw = Vec::with_capacity(expected);
     decoder.read_to_end(&mut raw).ok()?;
-    if raw.len() != full_width * full_height * 2 {
+    if raw.len() != expected {
         return None;
     }
 
     let width = (full_width + step - 1) / step;
     let height = (full_height + step - 1) / step;
     let mut out = vec![0u8; width * height];
+    let mut sums = vec![0u64; width * height];
+    let mut counts = vec![0u32; width * height];
 
     for y in 0..full_height {
         for x in 0..full_width {
             let index = (y * full_width + x) * 2;
-            let value = u16::from_le_bytes([raw[index], raw[index + 1]]).min(255) as u8;
+            let value = u16::from_le_bytes([raw[index], raw[index + 1]]) as u64;
             if value == 0 {
                 continue;
             }
-            let ox = x / step;
-            let oy = y / step;
-            let slot = oy * width + ox;
-            if value > out[slot] {
-                out[slot] = value;
-            }
+            let slot = (y / step) * width + (x / step);
+            sums[slot] += value;
+            counts[slot] += 1;
+        }
+    }
+
+    for (slot, sum) in sums.iter().enumerate() {
+        if counts[slot] > 0 {
+            out[slot] = (*sum / counts[slot] as u64).min(255) as u8;
         }
     }
 
@@ -336,16 +379,34 @@ fn decode_radar_frame(
 }
 
 #[tauri::command]
-async fn get_radar(request: RadarRequest) -> Result<Value, String> {
-    if !request.lat.is_finite() || !request.lon.is_finite() {
+async fn get_radar(app: tauri::AppHandle, request: RadarRequest) -> Result<Value, String> {
+    if !request.lat.is_finite()
+        || !request.lon.is_finite()
+        || !(-90.0..=90.0).contains(&request.lat)
+        || !(-180.0..=180.0).contains(&request.lon)
+    {
         return Err("Ungültige Radar-Koordinaten.".into());
     }
     let distance = request.distance.unwrap_or(120_000).clamp(30_000, 200_000);
     let now = Utc::now();
+    let cache_id = format!(
+        "{}_{}_{}",
+        cache_key(&format!("{:.4}", request.lat)),
+        cache_key(&format!("{:.4}", request.lon)),
+        distance
+    );
+    let path = cache_path(&app, "radar", &cache_id);
+    let cached = path.as_ref().and_then(read_cache);
+    if let Some(cached) = cached.as_ref() {
+        let age = cache_age(cached);
+        if (0..240).contains(&age) {
+            return Ok(cached.clone());
+        }
+    }
     let from = (now - Duration::minutes(65)).to_rfc3339_opts(SecondsFormat::Secs, true);
     let to = (now + Duration::minutes(95)).to_rfc3339_opts(SecondsFormat::Secs, true);
 
-    let payload = get_json(
+    let payload_result = get_json(
         "/radar",
         &[
             ("lat", request.lat.to_string()),
@@ -357,7 +418,15 @@ async fn get_radar(request: RadarRequest) -> Result<Value, String> {
             ("tz", "Europe/Berlin".into()),
         ],
     )
-    .await?;
+    .await;
+    let payload = match payload_result {
+        Ok(payload) => payload,
+        Err(err) => {
+            return cached
+                .map(mark_stale)
+                .ok_or_else(|| format!("Radar nicht erreichbar: {err}"));
+        }
+    };
 
     let bbox = payload
         .get("bbox")
@@ -405,7 +474,9 @@ async fn get_radar(request: RadarRequest) -> Result<Value, String> {
     }
 
     if frames.is_empty() {
-        return Err("Für diesen Zeitraum liegen keine Radardaten vor.".into());
+        return cached
+            .map(mark_stale)
+            .ok_or_else(|| "Für diesen Zeitraum liegen keine Radardaten vor.".to_string());
     }
 
     let last_source = radar_records
@@ -414,7 +485,7 @@ async fn get_radar(request: RadarRequest) -> Result<Value, String> {
         .and_then(Value::as_str)
         .unwrap_or("DWD RV");
 
-    Ok(json!({
+    let bundle = json!({
         "frames": frames,
         "bbox": bbox,
         "geometry": payload.get("geometry").cloned().unwrap_or(Value::Null),
@@ -425,7 +496,12 @@ async fn get_radar(request: RadarRequest) -> Result<Value, String> {
         "distance": distance,
         "source": last_source,
         "fetched_at": now.timestamp(),
-    }))
+        "stale": false,
+    });
+    if let Some(path) = path {
+        write_cache(&path, &bundle);
+    }
+    Ok(bundle)
 }
 
 async fn fetch_summary(
@@ -531,13 +607,7 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
         return Ok(json!({ "results": [] }));
     }
 
-    let key = query
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .take(80)
-        .collect::<String>();
-    let path = cache_path(&app, "places", &key);
+    let path = cache_path(&app, "places", &cache_key(query));
     if let Some(cached) = path.as_ref().and_then(read_cache) {
         let age = cache_age(&cached);
         if (0..PLACE_CACHE_SECONDS).contains(&age) {
@@ -558,12 +628,24 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
         .await
         .map_err(|e| format!("Ortsuche nicht erreichbar: {e}"))?;
 
+    let status = response.status();
     let body = response
         .text()
         .await
         .map_err(|e| format!("Antwort der Ortsuche konnte nicht gelesen werden: {e}"))?;
+    if !status.is_success() {
+        let short = body.chars().take(220).collect::<String>();
+        return Err(format!("Ortsuche antwortet mit {status}. {short}"));
+    }
     let parsed: Value =
         serde_json::from_str(&body).map_err(|e| format!("Ungültige Antwort der Ortsuche: {e}"))?;
+    if parsed.get("error").and_then(Value::as_bool).unwrap_or(false) {
+        let reason = parsed
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or("unbekannter Grund");
+        return Err(format!("Ortsuche meldet einen Fehler: {reason}"));
+    }
 
     let raw = parsed
         .get("results")
@@ -580,13 +662,24 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
                 .map(|code| code == "DE")
                 .unwrap_or(false)
         })
-        .map(|place| {
+        .filter_map(|place| {
+            let name = place.get("name").and_then(Value::as_str).unwrap_or("");
+            let lat = place.get("latitude").and_then(Value::as_f64).unwrap_or(f64::NAN);
+            let lon = place.get("longitude").and_then(Value::as_f64).unwrap_or(f64::NAN);
+            if name.is_empty()
+                || !lat.is_finite()
+                || !lon.is_finite()
+                || !(-90.0..=90.0).contains(&lat)
+                || !(-180.0..=180.0).contains(&lon)
+            {
+                return None;
+            }
             let geo_id = place.get("id").and_then(Value::as_i64).unwrap_or(0);
-            let name = place
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let id = if geo_id > 0 {
+                format!("ort-{geo_id}")
+            } else {
+                format!("ort-{}", cache_key(&format!("{name}|{lat:.5}|{lon:.5}")))
+            };
             let state = place
                 .get("admin1")
                 .and_then(Value::as_str)
@@ -594,17 +687,15 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
                 .or_else(|| place.get("admin3").and_then(Value::as_str))
                 .unwrap_or("Deutschland")
                 .to_string();
-            let lat = place.get("latitude").and_then(Value::as_f64).unwrap_or(0.0);
-            let lon = place.get("longitude").and_then(Value::as_f64).unwrap_or(0.0);
-            json!({
-                "id": format!("ort-{geo_id}"),
+            Some(json!({
+                "id": id,
                 "name": name,
                 "state": state,
                 "lat": lat,
                 "lon": lon,
                 "population": place.get("population").and_then(Value::as_u64).unwrap_or(0),
                 "kind": place.get("feature_code").and_then(Value::as_str).unwrap_or(""),
-            })
+            }))
         })
         .collect();
 
@@ -634,29 +725,40 @@ fn normalize_search(value: &str) -> String {
         .replace('ß', "ss")
 }
 
-/// Put the window on a secondary monitor when one is available. The primary
-/// monitor is left untouched (e.g. for games or other fullscreen work).
+/// Den Zielmonitor ausdrücklich beim Namen wählen. Auf Hyprland übernimmt der
+/// Launcher die Platzierung per Fensterregel; hier werden X11 und die
+/// Größenberechnung abgedeckt. Der Hauptmonitor bleibt unangetastet.
 fn place_on_secondary_monitor(window: &tauri::WebviewWindow) {
-    let primary = window.primary_monitor().ok().flatten();
     let monitors = match window.available_monitors() {
         Ok(monitors) => monitors,
         Err(_) => return,
     };
+    let wanted = std::env::var("BRISE_MONITOR").unwrap_or_else(|_| "DP-2".into());
+    let primary = window.primary_monitor().ok().flatten();
 
     let target = monitors
         .iter()
-        .find(|monitor| {
-            primary
-                .as_ref()
-                .map(|primary| monitor.position() != primary.position())
-                .unwrap_or(true)
-        })
-        .or_else(|| monitors.first());
+        .find(|monitor| monitor.name().is_some_and(|name| name == &wanted))
+        .or_else(|| {
+            monitors.iter().find(|monitor| {
+                primary
+                    .as_ref()
+                    .map(|primary| monitor.name() != primary.name())
+                    .unwrap_or(false)
+            })
+        });
 
     if let Some(monitor) = target {
         let area = monitor.work_area();
-        let width = (1440).min(area.size.width.saturating_sub(48)).max(640);
-        let height = (900).min(area.size.height.saturating_sub(80)).max(480);
+        let scale = monitor.scale_factor().max(1.0);
+        let desired_width = (1440.0 * scale).round() as u32;
+        let desired_height = (900.0 * scale).round() as u32;
+        let width = desired_width
+            .min(area.size.width.saturating_sub(48))
+            .max(1);
+        let height = desired_height
+            .min(area.size.height.saturating_sub(80))
+            .max(1);
         let x = area.position.x + ((area.size.width.saturating_sub(width)) / 2) as i32;
         let y = area.position.y + ((area.size.height.saturating_sub(height)) / 2) as i32;
 
