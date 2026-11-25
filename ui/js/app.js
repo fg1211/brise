@@ -2788,9 +2788,25 @@ function bindEvents() {
   });
 }
 
+function setupScrollPerformance() {
+  let idleTimer = 0;
+  document.addEventListener(
+    'scroll',
+    () => {
+      document.documentElement.dataset.scrolling = 'on';
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        delete document.documentElement.dataset.scrolling;
+      }, 180);
+    },
+    { passive: true, capture: true },
+  );
+}
+
 function startApp() {
   injectStaticIcons();
   applyTheme();
+  setupScrollPerformance();
   updateClock();
   window.setInterval(updateClock, 1000);
   renderFavorites();
