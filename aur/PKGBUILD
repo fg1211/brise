@@ -1,6 +1,6 @@
 # Maintainer: Felix <brise@users.noreply.github.com>
 pkgname=brise
-pkgver=1.0.5
+pkgver=1.0.6
 pkgrel=1
 pkgdesc="Moderne DWD-Wetter-App für deutsche Städte, optimiert für Wayland und Hyprland"
 arch=('x86_64')
@@ -11,9 +11,9 @@ makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gtk3' 'webkit2gtk-4.1' 'librsvg' 'l
 optdepends=('hyprland: Fensterplatzierung auf dem Cursor-Monitor')
 # LTO bricht die Assembly-Objekte der TLS-Bibliothek ring beim Linken.
 options=('!lto')
-_commit=749b2d27eb05c79a74f9a9d99abdc044efee07ec
+_commit=8c6318070386c5e6ff6df9160ccdf257fab5539f
 source=("$pkgname-$_commit.tar.gz::https://github.com/fg1211/brise/archive/$_commit.tar.gz")
-sha256sums=('3a0df0e8e3a4acfcb9a1c463eef7fc8bee4f74e7ef16e373503888fd8746e70d')
+sha256sums=('6272331f90603857abee04eecbf08dfab7213669ff9bacceb3824be9666237b7')
 
 build() {
   cd "$srcdir/$pkgname-$_commit/src-tauri"
