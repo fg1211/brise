@@ -47,6 +47,26 @@ const ONBOARDING_KEY = 'brise.onboarding.v1';
 
 const VIEW_IDS = new Set(['weather', 'radar', 'germany']);
 
+const THEME_OPTIONS = [
+  ['night', 'Mitternacht'],
+  ['day', 'Tageslicht'],
+  ['dusk', 'Abendrot'],
+  ['ocean', 'Ozean'],
+  ['forest', 'Nordwald'],
+  ['system', 'System folgen'],
+];
+const THEME_IDS = new Set(THEME_OPTIONS.map(([id]) => id));
+
+const ACCENT_OPTIONS = [
+  ['mint', 'Minze'],
+  ['sky', 'Himmelblau'],
+  ['violet', 'Violett'],
+  ['amber', 'Bernstein'],
+  ['coral', 'Koralle'],
+  ['slate', 'Schiefer'],
+];
+const ACCENT_IDS = new Set(ACCENT_OPTIONS.map(([id]) => id));
+
 const SEARCH_COMMANDS = [
   { id: 'radar', title: 'Regenradar öffnen', subtitle: 'Niederschlag und 90-Minuten-Prognose', icon: 'radar' },
   { id: 'germany', title: 'Deutschlandkarte', subtitle: 'Wetter aller Regionen im direkten Vergleich', icon: 'map' },
@@ -141,7 +161,8 @@ function saveJSON(key, value) {
 function loadSettings() {
   const stored = loadJSON(SETTINGS_KEY, {});
   const settings = { ...DEFAULT_SETTINGS, ...(stored && typeof stored === 'object' ? stored : {}) };
-  if (!['night', 'day', 'system'].includes(settings.theme)) settings.theme = DEFAULT_SETTINGS.theme;
+  if (!THEME_IDS.has(settings.theme)) settings.theme = DEFAULT_SETTINGS.theme;
+  if (!ACCENT_IDS.has(settings.accent)) settings.accent = DEFAULT_SETTINGS.accent;
   if (!['c', 'f'].includes(settings.tempUnit)) settings.tempUnit = 'c';
   if (!['kmh', 'ms', 'mph'].includes(settings.windUnit)) settings.windUnit = 'kmh';
   if (!['mm', 'in'].includes(settings.precipUnit)) settings.precipUnit = 'mm';
@@ -203,11 +224,19 @@ function preferredTheme() {
 
 function applyTheme() {
   const theme = preferredTheme();
+  const metaColors = {
+    day: '#edf5f3',
+    dusk: '#160f18',
+    ocean: '#06131f',
+    forest: '#081712',
+    night: '#081018',
+  };
   document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.accent = state.settings.accent;
   document.documentElement.dataset.motion = state.settings.animations ? 'on' : 'off';
   document.documentElement.style.colorScheme = theme === 'day' ? 'light' : 'dark';
   const meta = $('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', theme === 'day' ? '#edf5f3' : '#081018');
+  if (meta) meta.setAttribute('content', metaColors[theme] || metaColors.night);
 }
 
 function updateClock() {
@@ -1095,11 +1124,19 @@ function openSettingsModal() {
       <div class="settings-section">
         <div class="settings-section-title">Darstellung</div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Farbschema</div><div class="setting-hint">Mitternacht ist der dunkle Standard, Tageslicht ist hell und klar.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Farbwelt</div><div class="setting-hint">Dunkel, hell, warm oder kühl – die ganze Oberfläche wechselt mit.</div></div>
           <div class="setting-control">
-            <select class="settings-select" data-setting="theme" aria-label="Farbschema">
-              ${settingsSelectOptions([['night', 'Mitternacht'], ['day', 'Tageslicht'], ['system', 'System folgen']], settings.theme)}
+            <select class="settings-select" data-setting="theme" aria-label="Farbwelt">
+              ${settingsSelectOptions(THEME_OPTIONS, settings.theme)}
             </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Akzentfarbe</div><div class="setting-hint">Färbt Hervorhebungen, Diagramme und die Glaslichter.</div></div>
+          <div class="setting-control">
+            <div class="accent-swatches" role="group" aria-label="Akzentfarbe">
+              ${ACCENT_OPTIONS.map(([id, label]) => `<button type="button" class="accent-swatch accent-${id}${state.settings.accent === id ? ' is-active' : ''}" data-accent-setting="${id}" title="${label}" aria-label="${label}" aria-pressed="${state.settings.accent === id}"></button>`).join('')}
+            </div>
           </div>
         </div>
         <div class="setting-row">
@@ -1181,6 +1218,21 @@ function openSettingsModal() {
         rerenderForSettings();
       });
       root.addEventListener('click', (event) => {
+        const swatch = event.target.closest('[data-accent-setting]');
+        if (swatch) {
+          const accent = swatch.dataset.accentSetting;
+          if (!ACCENT_IDS.has(accent)) return;
+          state.settings.accent = accent;
+          persistSettings();
+          applyTheme();
+          $$('[data-accent-setting]', root).forEach((other) => {
+            const active = other === swatch;
+            other.classList.toggle('is-active', active);
+            other.setAttribute('aria-pressed', String(active));
+          });
+          rerenderForSettings();
+          return;
+        }
         const toggle = event.target.closest('[data-toggle-setting]');
         if (toggle) {
           const key = toggle.dataset.toggleSetting;
@@ -1730,14 +1782,15 @@ function openOnboarding() {
           </div>
           <div class="onboard-feature">
             <span class="onboard-feature-icon">${icon('settings', 17)}</span>
-            <span><strong>Deine Darstellung</strong><small>Wähle zwischen dunklem und hellem Design. Du kannst alles später ändern.</small></span>
+            <span><strong>Deine Darstellung</strong><small>Wähle eine Farbwelt. Akzentfarben und weitere Optionen findest du später in den Einstellungen.</small></span>
           </div>
         </div>
         <div class="onboard-theme">
-          <span class="onboard-label">Darstellung</span>
+          <span class="onboard-label">Farbwelt</span>
           <div class="onboard-theme-options">
-            <button type="button" class="onboard-theme-option${state.settings.theme !== 'day' ? ' is-active' : ''}" data-onboard-theme="night">Mitternacht</button>
-            <button type="button" class="onboard-theme-option${state.settings.theme === 'day' ? ' is-active' : ''}" data-onboard-theme="day">Tageslicht</button>
+            ${[['night', 'Mitternacht'], ['day', 'Tageslicht'], ['dusk', 'Abendrot'], ['ocean', 'Ozean'], ['forest', 'Nordwald']]
+              .map(([id, label]) => `<button type="button" class="onboard-theme-option${state.settings.theme === id ? ' is-active' : ''}" data-onboard-theme="${id}">${label}</button>`)
+              .join('')}
           </div>
         </div>
       </section>
