@@ -20,7 +20,7 @@ pkgbase = brise
 	depends = desktop-file-utils
 	optdepends = hyprland: Fensterplatzierung auf dem Cursor-Monitor
 	options = !lto
-	source = brise-c0e2b32c681d1cde57caf57527e3a77fb3826bf5.tar.gz::https://github.com/fg1211/brise/archive/c0e2b32c681d1cde57caf57527e3a77fb3826bf5.tar.gz
-	sha256sums = 9aa51716fffdc6898cfbc2dac5791f87882ddd45c71fbda671ab887124f76f81
+	source = brise-f56892ca034f59e29b1094eb963874eab91a0d12.tar.gz::https://github.com/fg1211/brise/archive/f56892ca034f59e29b1094eb963874eab91a0d12.tar.gz
+	sha256sums = 0e4e43a0b01dd857135095927bd59cd0ef012b880ae5d40aeedc9786726c123e
 
 pkgname = brise
