@@ -2,6 +2,7 @@ export const TIME_ZONE = 'Europe/Berlin';
 
 export const DEFAULT_SETTINGS = {
   theme: 'night',
+  accent: 'mint',
   tempUnit: 'c',
   windUnit: 'kmh',
   precipUnit: 'mm',
