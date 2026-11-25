@@ -1,0 +1,180 @@
+/* Glas & Glow – eine ruhige Lichtschicht über dem bestehenden Design.
+   Alle Effekte sind dezent genug, um Wetterwerte auch bei Tageslicht lesbar
+   zu halten, und werden bei reduzierter Bewegung abgeschaltet. */
+
+:root {
+  --glass-tint: rgba(125, 238, 211, 0.11);
+  --glass-line: rgba(165, 255, 231, 0.28);
+  --glass-glow: 0 0 48px -20px rgba(125, 238, 211, 0.5);
+}
+
+html[data-theme='day'] {
+  --glass-tint: rgba(13, 159, 134, 0.08);
+  --glass-line: rgba(13, 159, 134, 0.25);
+  --glass-glow: 0 0 42px -20px rgba(13, 159, 134, 0.32);
+}
+
+/* Langsam atmende Lichtbänder hinter der Oberfläche. */
+.ambient::before {
+  content: '';
+  position: absolute;
+  inset: -14%;
+  background:
+    radial-gradient(42% 38% at 16% 4%, rgba(125, 238, 211, 0.17), transparent 72%),
+    radial-gradient(38% 42% at 84% 22%, rgba(124, 200, 255, 0.13), transparent 74%),
+    radial-gradient(48% 36% at 52% 104%, rgba(192, 170, 255, 0.11), transparent 72%);
+  filter: blur(8px);
+  animation: glassFloat 34s ease-in-out infinite alternate;
+}
+
+html[data-theme='day'] .ambient::before {
+  background:
+    radial-gradient(42% 38% at 16% 4%, rgba(51, 176, 145, 0.15), transparent 72%),
+    radial-gradient(38% 42% at 84% 22%, rgba(78, 148, 205, 0.12), transparent 74%),
+    radial-gradient(48% 36% at 52% 104%, rgba(141, 119, 202, 0.08), transparent 72%);
+}
+
+@keyframes glassFloat {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to { transform: translate3d(2%, 2%, 0) scale(1.07); }
+}
+
+/* Feiner Lichtsaum an den Kanten von Fenster und Sidebar. */
+.titlebar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(125, 238, 211, 0.55) 26%,
+    rgba(124, 200, 255, 0.32) 58%,
+    transparent);
+  box-shadow: 0 0 16px rgba(125, 238, 211, 0.32);
+  pointer-events: none;
+}
+
+html[data-theme='day'] .titlebar::before {
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(13, 159, 134, 0.46) 26%,
+    rgba(33, 121, 184, 0.26) 58%,
+    transparent);
+  box-shadow: none;
+}
+
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  right: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--glass-line), transparent);
+  box-shadow: 0 0 14px rgba(125, 238, 211, 0.24);
+  pointer-events: none;
+}
+
+html[data-theme='day'] .sidebar::after {
+  box-shadow: none;
+}
+
+/* Karten bekommen einen Glanzschein, ohne ihre Farbe zu verlieren. */
+.card {
+  background-image:
+    radial-gradient(125% 85% at 0% 0%, var(--glass-tint), transparent 58%),
+    linear-gradient(155deg, rgba(22, 39, 53, 0.68) 0%, rgba(12, 25, 36, 0.62) 50%, rgba(9, 19, 28, 0.7) 100%);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+html[data-theme='day'] .card {
+  background-image:
+    radial-gradient(125% 85% at 0% 0%, var(--glass-tint), transparent 58%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.82) 0%, rgba(249, 253, 252, 0.66) 50%, rgba(240, 249, 246, 0.72) 100%);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.card:hover {
+  border-color: var(--glass-line);
+  box-shadow: 0 24px 60px -32px rgba(0, 0, 0, 0.72), var(--glass-glow), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme='day'] .card:hover {
+  border-color: var(--glass-line);
+  box-shadow: 0 22px 50px -30px rgba(24, 78, 70, 0.35), var(--glass-glow), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Die Wetter-Hero trägt den stärksten, aber immer noch weichen Glow. */
+.hero-card {
+  box-shadow:
+    var(--shadow-soft),
+    0 0 90px -50px rgba(125, 238, 211, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='day'] .hero-card {
+  box-shadow:
+    var(--shadow-soft),
+    0 0 70px -46px rgba(13, 159, 134, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.hero-temp {
+  text-shadow: 0 0 38px rgba(125, 238, 211, 0.24), 0 12px 44px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme='day'] .hero-temp {
+  text-shadow: 0 0 30px rgba(13, 159, 134, 0.14), 0 8px 26px rgba(38, 74, 71, 0.12);
+}
+
+/* Aktive Elemente leuchten sanft, statt zu „schreien“. */
+.nav-item.is-active,
+.segmented button.is-active {
+  box-shadow: inset 0 0 0 1px var(--glass-line), var(--glass-glow);
+}
+
+.action-button.primary:hover,
+.radar-play:hover {
+  box-shadow: 0 0 0 1px var(--glass-line), var(--glass-glow);
+}
+
+:where(button, input, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+/* Dialoge wirken wie geschliffene Scheiben über dem Wetter. */
+.modal,
+.onboarding-modal {
+  box-shadow:
+    0 40px 120px -44px rgba(0, 0, 0, 0.86),
+    0 0 0 1px rgba(125, 238, 211, 0.14),
+    var(--glass-glow);
+}
+
+html[data-theme='day'] .modal,
+html[data-theme='day'] .onboarding-modal {
+  box-shadow:
+    0 34px 90px -44px rgba(38, 74, 71, 0.42),
+    0 0 0 1px rgba(13, 159, 134, 0.16),
+    var(--glass-glow);
+}
+
+.radar-stage {
+  box-shadow: inset 0 0 0 1px rgba(125, 238, 211, 0.12), inset 0 0 70px rgba(125, 238, 211, 0.06);
+}
+
+html[data-theme='day'] .radar-stage {
+  box-shadow: inset 0 0 0 1px rgba(13, 159, 134, 0.14), inset 0 0 60px rgba(70, 110, 110, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient::before {
+    animation: none;
+  }
+}
+
+html[data-motion='off'] .ambient::before {
+  animation: none;
+}
