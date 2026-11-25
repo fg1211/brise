@@ -26,7 +26,7 @@ cd brise
 cp /pfad/zu/brise/aur/PKGBUILD .
 makepkg --printsrcinfo > .SRCINFO
 git add PKGBUILD .SRCINFO
-git commit -m "Brise 1.0.2"
+git commit -m "Brise 1.0.3"
 git push
 ```
 
@@ -41,12 +41,12 @@ yay -S brise
 brise-launch
 ```
 
-Mit `yay -Syu brise` aktualisieren. Für eine Version `1.0.2` im GitHub-Repository: Tag `v1.0.2`
+Mit `yay -Syu brise` aktualisieren. Für eine Version `1.0.3` im GitHub-Repository: Tag `v1.0.3`
 setzen, `pkgver` und `sha256sums` im `PKGBUILD` anpassen, `.SRCINFO` neu erzeugen und erneut
 pushen. Die neue `sha256sum` erhält man mit:
 
 ```bash
-curl -sSL https://github.com/fg1211/brise/archive/refs/tags/v1.0.2.tar.gz | sha256sum
+curl -sSL https://github.com/fg1211/brise/archive/refs/tags/v1.0.3.tar.gz | sha256sum
 ```
 
 ## Hinweis zum Launcher
