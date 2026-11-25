@@ -1053,7 +1053,9 @@ html[data-theme='day'] .favorite-icon {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scroll-behavior: smooth;
+  /* Direktes Scrollen ohne zusätzliche Animationsschicht – auf WebKitGTK
+     sonst spürbares Nachziehen und Judder auf schnellen Monitoren. */
+  scroll-behavior: auto;
 }
 
 .view {
