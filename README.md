@@ -70,17 +70,17 @@ tar -xzf dist/brise-1.0.3-x86_64.tar.gz
 cd dist && ./install.sh
 ```
 
-### Mit yay aus dem AUR (Arch Linux)
+### Arch Linux
 
-Sobald das Paket im AUR liegt, genügt:
+Mit yay:
 
 ```bash
 yay -S brise
 ```
 
-Das Paket baut Brise aus den Quellen des GitHub-Tags `v1.0.3` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
+Das Paket baut Brise aus den Quellen von `v1.0.3` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
 
-Das AUR-Paket wird **nicht** automatisch von diesem Repository veröffentlicht — dafür ist ein eigener AUR-Account nötig. Die fertige `PKGBUILD` liegt unter [`aur/PKGBUILD`](aur/PKGBUILD); die Schritte zum Veröffentlichen stehen in [`aur/README.md`](aur/README.md).
+Noch nicht im AUR? Unter [`aur/PKGBUILD`](aur/PKGBUILD) liegt ein Paketrezept – damit baut `makepkg -si` Brise selbst.
 
 ### Aus dem Quellcode bauen
 
