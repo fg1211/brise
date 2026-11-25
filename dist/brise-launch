@@ -59,6 +59,14 @@ if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; the
   export GDK_BACKEND=wayland
 fi
 
+# Keine künstlichen Frame-Limits und kein erzwungenes Timer-Vblank: WebKit
+# soll sich am Vblank des Monitors ausrichten. Auf NVIDIA verhindert diese
+# Variable zusätzlich Protokollfehler im DMA-BUF-Pfad.
+unset WEBKIT_DISPLAY_REFRESH_THROTTLE_FPS
+unset WEBKIT_FORCE_VBLANK_TIMER
+unset WEBKIT_DISABLE_COMPOSITING_MODE
+export __NV_DISABLE_EXPLICIT_SYNC="${__NV_DISABLE_EXPLICIT_SYNC:-1}"
+
 if [ -n "$MONITOR" ]; then
   export BRISE_MONITOR="$MONITOR"
 fi
