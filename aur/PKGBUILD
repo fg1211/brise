@@ -1,7 +1,7 @@
 # Maintainer: Felix <brise@users.noreply.github.com>
 pkgname=brise
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Moderne DWD-Wetter-App für deutsche Städte, optimiert für Wayland und Hyprland"
 arch=('x86_64')
 url="https://github.com/fg1211/brise"
@@ -11,16 +11,17 @@ makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gtk3' 'webkit2gtk-4.1' 'librsvg' 'l
 optdepends=('hyprland: automatische Fensterplatzierung auf DP-2')
 # LTO bricht die Assembly-Objekte der TLS-Bibliothek ring beim Linken.
 options=('!lto')
-source=("$pkgname-$pkgver.tar.gz::https://github.com/fg1211/brise/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('ec1e9d80d01cae9805a5a0e15f5a2ea02a7282f47551fdefd9f380903e7842d0')
+_commit=6aeddc328367d159afb0fc78c757e29237211ebc
+source=("$pkgname-$_commit.tar.gz::https://github.com/fg1211/brise/archive/$_commit.tar.gz")
+sha256sums=('5c2d31ad1a8672d038431c948de8a57e061d8e4db37691ddee42f72083108c27')
 
 build() {
-  cd "$srcdir/$pkgname-$pkgver/src-tauri"
+  cd "$srcdir/$pkgname-$_commit/src-tauri"
   cargo build --release --locked
 }
 
 package() {
-  cd "$srcdir/$pkgname-$pkgver"
+  cd "$srcdir/$pkgname-$_commit"
 
   install -Dm755 "src-tauri/target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
   install -Dm755 dist/brise-launch "$pkgdir/usr/bin/brise-launch"
