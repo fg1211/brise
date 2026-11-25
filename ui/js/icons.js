@@ -333,14 +333,40 @@ export function weatherArt(iconName = 'cloudy', forceNight = false) {
   </svg>`;
 }
 
-export function moonPhaseIcon(phase = 0.5, size = 32) {
+export function moonPhaseIcon(phase = 0.5, size = 32, waxing = true) {
   const illumination = Math.max(0, Math.min(1, phase));
-  const shadowOffset = (1 - illumination) * 20 - 10;
+  const id = `moon${size}${Math.round(illumination * 100)}${waxing ? 'w' : 'x'}`;
+  const rx = Math.abs(1 - 2 * illumination) * 10;
+  const outerSweep = waxing ? 1 : 0;
+  const innerSweep = waxing ? (illumination < 0.5 ? 0 : 1) : (illumination < 0.5 ? 1 : 0);
+  const litPath = illumination >= 0.999
+    ? 'M 16 6 A 10 10 0 0 1 16 26 A 10 10 0 0 1 16 6 Z'
+    : illumination <= 0.001
+      ? ''
+      : `M 16 6 A 10 10 0 0 ${outerSweep} 16 26 A ${rx.toFixed(2)} 10 0 0 ${innerSweep} 16 6 Z`;
   return `<svg class="moon-phase-icon" width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true">
-    <defs><clipPath id="moonClip${size}"><circle cx="16" cy="16" r="10"/></clipPath></defs>
-    <circle cx="16" cy="16" r="10" fill="#DDE7F7"/>
-    <rect x="${16 + shadowOffset}" y="5" width="22" height="22" fill="#25324C" clip-path="url(#moonClip${size})"/>
-    <circle cx="16" cy="16" r="10" fill="none" stroke="rgba(255,255,255,.25)"/>
+    <defs>
+      <radialGradient id="${id}Surface" cx="35%" cy="28%" r="78%">
+        <stop offset="0" stop-color="#ffffff"/>
+        <stop offset="0.55" stop-color="#e9eeff"/>
+        <stop offset="1" stop-color="#aebbd6"/>
+      </radialGradient>
+      <radialGradient id="${id}Glow">
+        <stop offset="0.32" stop-color="#dbe6ff" stop-opacity="0.45"/>
+        <stop offset="1" stop-color="#c4d4ff" stop-opacity="0"/>
+      </radialGradient>
+      <clipPath id="${id}Lit"><path d="${litPath}"/></clipPath>
+    </defs>
+    <circle cx="16" cy="16" r="14.5" fill="url(#${id}Glow)"/>
+    <circle cx="16" cy="16" r="10" fill="#202d43"/>
+    <path d="${litPath}" fill="url(#${id}Surface)"/>
+    <g clip-path="url(#${id}Lit)" fill="#7f8dab" opacity="0.3">
+      <circle cx="12" cy="12.5" r="2.1"/>
+      <circle cx="19.5" cy="10.5" r="1.3"/>
+      <circle cx="17.5" cy="19" r="2.5"/>
+      <circle cx="10.5" cy="20" r="1.1"/>
+    </g>
+    <circle cx="16" cy="16" r="10" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="0.6"/>
   </svg>`;
 }
 
