@@ -2,16 +2,17 @@ import { GERMANY_GEO } from './germany-geo.js';
 import { CITIES } from './cities.js';
 import { formatTime, toDate, localDayKey } from './weather.js';
 
+// Bright-Sky-Rohwerte * 0.12 = mm/h. Die Stufen orientieren sich
+// deshalb an echten Niederschlagsklassen statt an willkürlichen Rohwerten.
 const RADAR_COLORS = [
-  { max: 1, color: [102, 191, 255, 44] },
-  { max: 3, color: [82, 185, 255, 92] },
-  { max: 6, color: [70, 220, 206, 132] },
-  { max: 10, color: [119, 233, 139, 164] },
-  { max: 18, color: [249, 226, 100, 195] },
-  { max: 30, color: [255, 168, 76, 218] },
-  { max: 50, color: [255, 91, 88, 235] },
-  { max: 90, color: [232, 84, 201, 244] },
-  { max: Infinity, color: [200, 108, 255, 252] },
+  { max: 8, color: [102, 191, 255, 44] },
+  { max: 17, color: [82, 185, 255, 92] },
+  { max: 34, color: [70, 220, 206, 132] },
+  { max: 50, color: [119, 233, 139, 164] },
+  { max: 84, color: [249, 226, 100, 195] },
+  { max: 125, color: [255, 168, 76, 218] },
+  { max: 209, color: [255, 91, 88, 235] },
+  { max: Infinity, color: [232, 84, 201, 244] },
 ];
 
 const MAP_LABELS = new Set([
@@ -63,9 +64,18 @@ function intensityLabel(raw) {
 }
 
 function drawRoundRect(ctx, x, y, w, h, r) {
-  const radius = Math.min(r, w / 2, h / 2);
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, radius);
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, radius);
+    return;
+  }
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
 }
 
 export class RadarRenderer {
@@ -97,12 +107,23 @@ export class RadarRenderer {
     this.pause();
     this.data = data;
     this.city = city;
-    this.frames = data.frames.map((frame) => ({
-      ...frame,
-      date: toDate(frame.timestamp),
-      bytes: decodeBase64(frame.data),
-      colorCanvas: null,
-    }));
+    if (!Array.isArray(data?.frames) || !data.frames.length) {
+      throw new Error('Die Radardaten sind unvollständig.');
+    }
+    this.frames = data.frames.map((frame) => {
+      let bytes;
+      try {
+        bytes = decodeBase64(frame?.data);
+      } catch {
+        throw new Error('Ein Radarbild konnte nicht gelesen werden.');
+      }
+      if (!Number.isInteger(frame?.width) || !Number.isInteger(frame?.height)
+        || frame.width <= 0 || frame.height <= 0
+        || bytes.length < frame.width * frame.height) {
+        throw new Error('Ein Radarbild hat eine ungültige Größe.');
+      }
+      return { ...frame, date: toDate(frame.timestamp), bytes, colorCanvas: null };
+    });
     this.colorCache.clear();
     this.index = this.findLiveIndex();
     this.nearby = this.findNearbyCities();
@@ -429,8 +450,8 @@ export class RadarRenderer {
     const { width, height, dpr } = this.size;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.drawImage(this.baseCanvas, 0, 0, width * dpr, height * dpr, 0, 0, width, height);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.drawImage(this.baseCanvas, 0, 0, width * dpr, height * dpr, 0, 0, width, height);
     this.drawFrameImage(this.frames[this.index]);
     this.drawNearbyLabels(this.ctx);
     this.drawRadarRings(this.ctx);
@@ -573,10 +594,10 @@ export class RadarRenderer {
 
 export function radarLegend() {
   return [
-    { label: 'leicht', color: 'rgba(95, 193, 255, .75)' },
-    { label: 'mäßig', color: 'rgba(88, 222, 188, .8)' },
-    { label: 'kräftig', color: 'rgba(246, 222, 91, .9)' },
-    { label: 'stark', color: 'rgba(255, 110, 84, .95)' },
-    { label: 'extrem', color: 'rgba(220, 91, 219, 1)' },
+    { label: 'leicht', range: '< 2 mm/h', color: 'rgba(95, 193, 255, .75)' },
+    { label: 'mäßig', range: '2–6 mm/h', color: 'rgba(70, 220, 206, .8)' },
+    { label: 'kräftig', range: '6–10 mm/h', color: 'rgba(249, 226, 100, .9)' },
+    { label: 'stark', range: '10–25 mm/h', color: 'rgba(255, 168, 76, .95)' },
+    { label: 'extrem', range: '> 25 mm/h', color: 'rgba(232, 84, 201, 1)' },
   ];
 }
