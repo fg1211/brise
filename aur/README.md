@@ -26,7 +26,7 @@ cd brise
 cp /pfad/zu/brise/aur/PKGBUILD .
 makepkg --printsrcinfo > .SRCINFO
 git add PKGBUILD .SRCINFO
-git commit -m "Brise 1.0.0"
+git commit -m "Brise 1.0.2"
 git push
 ```
 
@@ -51,8 +51,9 @@ curl -sSL https://github.com/fg1211/brise/archive/refs/tags/v1.0.1.tar.gz | sha2
 
 ## Hinweis zum Launcher
 
-`brise-launch` platziert das Fenster unter Hyprland auf `DP-2` und teilt es (`tile=true`).
-Anderen Monitor wählen:
+`brise-launch` öffnet das Fenster unter Hyprland geteilt (`tile=true`) auf dem
+Monitor, auf dem sich der Mauszeiger gerade befindet.
+Anderen Monitor erzwingen:
 
 ```bash
 BRISE_MONITOR=DP-4 brise-launch
