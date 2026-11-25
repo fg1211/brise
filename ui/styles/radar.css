@@ -675,3 +675,36 @@ html[data-theme='day'] .rain-now-card {
     width: 96px;
   }
 }
+
+/* Feinschliff: Radar */
+.radar-legend-label,
+.radar-legend-scale,
+.radar-attribution {
+  font-size: 9px;
+}
+
+html[data-theme='day'] .radar-stage::after {
+  box-shadow: inset 0 0 60px rgba(70, 110, 110, 0.12);
+}
+
+html[data-theme='day'] .radar-attribution {
+  color: rgba(24, 62, 58, 0.72);
+}
+
+html[data-theme='day'] .radar-live-chip,
+html[data-theme='day'] .radar-legend {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: var(--line-strong);
+  color: var(--text-2);
+}
+
+html[data-theme='day'] .radar-legend-scale {
+  color: var(--text-3);
+}
+
+@media (max-height: 640px) {
+  .radar-stage {
+    height: clamp(280px, 46vh, 360px);
+    margin: 0 8px;
+  }
+}
