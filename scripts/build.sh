@@ -3,7 +3,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="1.0.3"
+version="1.0.4"
 
 echo "== Release-Build =="
 cd "$root/src-tauri"
