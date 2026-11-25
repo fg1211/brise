@@ -49,8 +49,9 @@ brise-launch
 ### Monitor-Verhalten
 
 Auf Hyprland registriert `brise-launch` vor dem Start eine Fensterregel, die das
-Fenster automatisch auf **DP-2** legt. Der Hauptmonitor (DP-3) bleibt damit frei.
-Über die Umgebungsvariable `BRISE_MONITOR` lässt sich ein anderer Monitor wählen:
+Fenster **geteilt (`tile=true`) auf dem Monitor unter dem Mauszeiger** öffnet. Die
+Position im Layout bestimmt Hyprland. Mit `BRISE_MONITOR` lässt sich ein
+Monitor vorgeben:
 
 ```bash
 BRISE_MONITOR=DP-1 brise-launch
