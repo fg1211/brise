@@ -619,6 +619,19 @@ function renderWeather() {
   const stationName = model.station?.station_name || model.station?.id || 'DWD-Messstation';
   const observed = `${formatTime(model.observedAt)} Uhr`;
   const daylightProgress = Math.round(sunProgress(new Date(), sun.sunrise, sun.sunset) * 100);
+  const isNight = daylightProgress <= 0 || daylightProgress >= 100;
+  const nightSpanMs = Math.max(0, 86400000 - (sun.dayMinutes || 0) * 60000);
+  let moonProgress = 0;
+  if (sun.sunrise && sun.sunset && nightSpanMs > 0) {
+    const now = new Date();
+    if (now >= sun.sunset) moonProgress = (now - sun.sunset) / nightSpanMs;
+    else if (now < sun.sunrise) moonProgress = (nightSpanMs - (sun.sunrise - now)) / nightSpanMs;
+    moonProgress = clamp(moonProgress, 0, 1);
+  }
+  const moonAngle = Math.PI - Math.PI * moonProgress;
+  const moonX = 160 + 116 * Math.cos(moonAngle);
+  const moonY = 124 - 116 * Math.sin(moonAngle);
+  document.documentElement.dataset.night = isNight ? 'on' : 'off';
   const sunrise = sun.sunrise ? formatTime(sun.sunrise) : '–';
   const sunset = sun.sunset ? formatTime(sun.sunset) : '–';
   const dayLength = sun.dayMinutes > 0 ? formatDuration(sun.dayMinutes) : '–';
@@ -823,6 +836,9 @@ function renderWeather() {
         <circle class="sun-arc-dot" cx="${sunDotX.toFixed(2)}" cy="${sunDotY.toFixed(2)}" r="4.5"/>
         <circle cx="48" cy="128" r="1.7" fill="rgba(255,208,139,.7)"/>
         <circle cx="272" cy="128" r="1.7" fill="rgba(192,170,255,.7)"/>
+        ${isNight ? `<g class="sun-arc-stars"><circle cx="78" cy="66" r="1.3"/><circle cx="236" cy="52" r="1.1"/><circle cx="276" cy="92" r="1.4"/><circle cx="118" cy="44" r="0.9"/></g>
+        <path class="sun-arc-moon-path" d="M 44 124 A 116 116 0 0 1 ${moonX.toFixed(2)} ${moonY.toFixed(2)}"/>
+        <circle class="sun-arc-moon" cx="${moonX.toFixed(2)}" cy="${moonY.toFixed(2)}" r="6"/>` : ''}
       </svg>
     </div>
     <div class="sun-times">
@@ -840,10 +856,18 @@ function renderWeather() {
       <div class="daylight-line"><i style="width:${clamp(daylightProgress, 2, 100)}%"></i></div>
       <div class="daylight-caption"><span>${formatTime(sun.sunrise)}</span><span>${formatTime(sun.sunset)}</span></div>
     </div>
-    <div class="moon-row">
-      <span class="moon-icon-wrap">${moonPhaseIcon(moon.illumination, 28)}</span>
-      <span class="moon-copy"><strong>${escapeHTML(moon.name)}</strong><span>${moon.waxing ? 'zunehmend' : 'abnehmend'} · ${Math.round(moon.age)} Tage alt</span></span>
-      <span class="moon-percent">${moon.percent}<span class="moon-unit">%</span></span>
+    <div class="moon-feature">
+      <div class="moon-stage">
+        <span class="moon-stage-glow" aria-hidden="true"></span>
+        ${moonPhaseIcon(moon.illumination, 76, moon.waxing)}
+      </div>
+      <div class="moon-info">
+        <span class="moon-kicker">Mondphase</span>
+        <strong class="moon-name">${escapeHTML(moon.name)}</strong>
+        <span class="moon-detail">${moon.waxing ? 'zunehmend' : 'abnehmend'} · ${Math.round(moon.age)} Tage alt</span>
+        <div class="moon-meter" aria-hidden="true"><i style="width:${moon.percent}%"></i></div>
+        <span class="moon-caption">${moon.percent} % beleuchtet</span>
+      </div>
     </div>
   </section>`;
 
