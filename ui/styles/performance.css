@@ -1,0 +1,24 @@
+/* Flüssiges Scrollen: die vorhandenen Scrollbereiche werden eigene
+   Compositor-Ebenen und bleiben beim Scrollen ohne Scroll-Chaining. */
+
+:where(
+  .main,
+  .sidebar-top,
+  .modal-body,
+  .command-results,
+  .onboarding-scroll,
+  .onboard-results,
+  .ranking-list,
+  .hourly-scroll
+) {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.main {
+  will-change: scroll-position;
+}
+
+html[data-motion='off'] .main {
+  will-change: auto;
+}
