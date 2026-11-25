@@ -52,7 +52,7 @@
   --text: #e9f4f2;
   --text-2: #a8bdc2;
   --text-3: #708991;
-  --text-4: #4d656f;
+  --text-4: #6b8189;
   --accent: #7deed3;
   --accent-soft: rgba(125, 238, 211, 0.14);
   --accent-strong: #a5ffe7;
@@ -94,7 +94,7 @@ html[data-theme='day'] {
   --text: #0d2428;
   --text-2: #426066;
   --text-3: #71878b;
-  --text-4: #94a6a8;
+  --text-4: #596f74;
   --accent: #0d9f86;
   --accent-soft: rgba(13, 159, 134, 0.12);
   --accent-strong: #087a68;
@@ -2967,4 +2967,34 @@ html[data-theme='day'] .onboard-feature {
     padding-top: 14px;
     padding-bottom: 14px;
   }
+}
+
+/* Feinschliff: Kontraste und Flächen */
+.main {
+  container-type: inline-size;
+}
+
+.noscript {
+  position: fixed;
+  inset: auto 16px 16px;
+  z-index: 200;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }
