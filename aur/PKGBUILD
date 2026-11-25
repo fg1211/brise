@@ -1,0 +1,36 @@
+# Maintainer: Felix <brise@users.noreply.github.com>
+pkgname=brise
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Moderne DWD-Wetter-App für deutsche Städte, optimiert für Wayland und Hyprland"
+arch=('x86_64')
+url="https://github.com/fg1211/brise"
+license=('MIT')
+depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme' 'desktop-file-utils')
+makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gtk3' 'webkit2gtk-4.1' 'librsvg' 'libsoup3' 'libayatana-appindicator')
+optdepends=('hyprland: automatische Fensterplatzierung auf DP-2')
+# LTO bricht die Assembly-Objekte der TLS-Bibliothek ring beim Linken.
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/fg1211/brise/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('ec1e9d80d01cae9805a5a0e15f5a2ea02a7282f47551fdefd9f380903e7842d0')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver/src-tauri"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  install -Dm755 "src-tauri/target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
+  install -Dm755 dist/brise-launch "$pkgdir/usr/bin/brise-launch"
+  install -Dm644 dist/brise.desktop "$pkgdir/usr/share/applications/brise.desktop"
+
+  install -Dm644 dist/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/brise.png"
+  install -Dm644 dist/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/brise.png"
+  install -Dm644 dist/icons/512x512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/brise.png"
+  install -Dm644 dist/icons/brise.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/brise.svg"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"
+}
