@@ -94,8 +94,15 @@ function snowDots(positions = [[18, 39], [25, 43], [32, 39]]) {
   return `<g class="wx-snow">${positions.map(([cx, cy], i) => `<circle cx="${cx}" cy="${cy}" r="${i === 1 ? 1.5 : 1.2}"/>`).join('')}</g>`;
 }
 
+const WEATHER_ICON_NAMES = new Set([
+  'clear-day', 'clear-night', 'partly-cloudy-day', 'partly-cloudy-night',
+  'cloudy', 'fog', 'wind', 'rain', 'sleet', 'snow', 'hail', 'thunderstorm',
+]);
+
 export function weatherIcon(iconName = 'cloudy', className = '') {
-  const name = String(iconName || 'cloudy');
+  const requested = String(iconName || 'cloudy');
+  const name = WEATHER_ICON_NAMES.has(requested) ? requested : 'cloudy';
+  const safeClass = String(className || '').replace(/[^\w\s-]/g, '');
   const night = name.includes('night');
   let body = '';
 
@@ -136,7 +143,7 @@ export function weatherIcon(iconName = 'cloudy', className = '') {
     body = `${cloud(23, 25, 1.06, 0.95, 'wx-cloud-front')}${sunRays(36, 13, 0, 0)}`;
   }
 
-  return `<svg class="wx-icon wx-${name} ${className}" viewBox="0 0 48 48" fill="none" aria-hidden="true" focusable="false">${body}</svg>`;
+  return `<svg class="wx-icon wx-${name} ${safeClass}" viewBox="0 0 48 48" fill="none" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
 function starsMarkup() {
