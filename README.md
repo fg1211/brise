@@ -26,6 +26,7 @@ Die Ortsuche findet **jeden Ort in Deutschland**, auch kleine Gemeinden und Stad
 
 - **Aktuelles Wetter** für jeden deutschen Ort: Temperatur, Gefühlt wie, Wind, Niederschlag, Luftfeuchte, Luftdruck und Sichtweite.
 - **Stunden- und Tagesvorhersage** mit echten Messwerten und übersichtlichen Diagrammen.
+- **Sonne & Mond**: Sonnenstand, Tageslicht und eine grafische Mondphase mit Beleuchtungsgrad; nachts mit Sternenhimmel.
 - **Amtliche Warnungen** mit Gültigkeitszeitraum, Schweregrad und Handlungshinweisen.
 - **Regenradar** mit 31 animierten DWD-Radarbildern, Zeitsteuerung und 90-Minuten-Prognose.
 - **Deutschlandkarte** mit Städtevergleich, Ranking und echten Bundesländergrenzen.
@@ -68,6 +69,18 @@ Falls kein vorgebautes Binary vorhanden ist, baut `install.sh` automatisch aus d
 tar -xzf dist/brise-1.0.0-x86_64.tar.gz
 cd dist && ./install.sh
 ```
+
+### Mit yay aus dem AUR (Arch Linux)
+
+Sobald das Paket im AUR liegt, genügt:
+
+```bash
+yay -S brise
+```
+
+Das Paket baut Brise aus den Quellen des GitHub-Tags `v1.0.0` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher startet das Fenster standardmäßig auf `DP-2`; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor wählen.
+
+Das AUR-Paket wird **nicht** automatisch von diesem Repository veröffentlicht — dafür ist ein eigener AUR-Account nötig. Die fertige `PKGBUILD` liegt unter [`aur/PKGBUILD`](aur/PKGBUILD); die Schritte zum Veröffentlichen stehen in [`aur/README.md`](aur/README.md).
 
 ### Aus dem Quellcode bauen
 
