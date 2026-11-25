@@ -1,7 +1,7 @@
 pkgbase = brise
 	pkgdesc = Moderne DWD-Wetter-App für deutsche Städte, optimiert für Wayland und Hyprland
-	pkgver = 1.0.0
-	pkgrel = 2
+	pkgver = 1.0.2
+	pkgrel = 1
 	url = https://github.com/fg1211/brise
 	arch = x86_64
 	license = MIT
