@@ -279,6 +279,35 @@ html[data-theme='day'] .ambient-glow-b {
   background: radial-gradient(circle, rgba(74, 137, 194, 0.12) 0%, transparent 68%);
 }
 
+.ambient-stars {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 900ms ease;
+  background-image:
+    radial-gradient(1.2px 1.2px at 24px 38px, rgba(228, 236, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 132px 96px, rgba(228, 236, 255, 0.55), transparent),
+    radial-gradient(1.4px 1.4px at 208px 22px, rgba(255, 238, 214, 0.65), transparent),
+    radial-gradient(0.9px 0.9px at 78px 158px, rgba(228, 236, 255, 0.6), transparent);
+  background-size: 260px 190px;
+}
+
+html[data-night='on'] .ambient-stars {
+  opacity: 0.62;
+}
+
+html[data-night='on'][data-theme='day'] .ambient-stars {
+  opacity: 0.16;
+}
+
+html[data-night='on'] .ambient-glow-a {
+  background: radial-gradient(circle, rgba(118, 132, 214, 0.15) 0%, transparent 68%);
+}
+
+html[data-night='on'] .ambient-glow-b {
+  background: radial-gradient(circle, rgba(87, 114, 190, 0.13) 0%, transparent 68%);
+}
+
 .ambient-grid {
   position: absolute;
   inset: 0;
@@ -1114,6 +1143,27 @@ html[data-theme='day'] .card {
 
 html[data-theme='day'] .card::before {
   border-top-color: rgba(255, 255, 255, 0.8);
+}
+
+.card {
+  transition: border-color 240ms ease, box-shadow 240ms ease, transform 240ms ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(125, 238, 211, 0.2);
+  box-shadow: 0 24px 60px -32px rgba(0, 0, 0, 0.72);
+}
+
+html[data-theme='day'] .card:hover {
+  border-color: rgba(30, 128, 108, 0.24);
+  box-shadow: 0 22px 50px -30px rgba(24, 78, 70, 0.35);
+}
+
+html[data-motion='off'] .card,
+html[data-motion='off'] .card:hover {
+  transition: none;
+  transform: none;
 }
 
 .card-head {
