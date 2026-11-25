@@ -1,0 +1,361 @@
+/* Zusätzliche Farbwelten und Akzentfarben. Diese Datei wird zuletzt geladen,
+   damit sie die Grundwerte aus main.css und glass.css überschreiben kann. */
+
+/* ---------- Abendrot: warm, dunkel, ruhig ---------- */
+html[data-theme='dusk'] {
+  color-scheme: dark;
+  --bg: #160f18;
+  --bg-deep: #0d0810;
+  --bg-raised: #201626;
+  --panel: rgba(45, 29, 46, 0.68);
+  --panel-solid: #241826;
+  --panel-strong: rgba(56, 36, 57, 0.88);
+  --panel-soft: rgba(255, 226, 214, 0.035);
+  --line: rgba(255, 190, 160, 0.13);
+  --line-strong: rgba(255, 190, 160, 0.24);
+  --text: #f8ece8;
+  --text-2: #c8aeb1;
+  --text-3: #9b8189;
+  --text-4: #7f6870;
+  --accent: #ffb38a;
+  --accent-soft: rgba(255, 179, 138, 0.14);
+  --accent-strong: #ffd0ae;
+  --sky: #ffc98f;
+  --sky-soft: rgba(255, 201, 143, 0.12);
+  --warm: #ffd7a1;
+  --warm-soft: rgba(255, 215, 161, 0.12);
+  --violet: #d2a5ff;
+  --violet-soft: rgba(210, 165, 255, 0.12);
+  --success: #a8e6b0;
+  --shadow: 0 24px 70px -32px rgba(0, 0, 0, 0.82);
+  --shadow-soft: 0 16px 46px -28px rgba(0, 0, 0, 0.74);
+  --chart-line: #ffb38a;
+  --chart-rain: #ffc98f;
+  --chart-night: rgba(255, 160, 120, 0.06);
+  --glass-tint: rgba(255, 179, 138, 0.2);
+  --glass-line: rgba(255, 208, 174, 0.46);
+  --glass-glow: 0 0 60px -10px rgba(255, 179, 138, 0.58);
+}
+
+html[data-theme='dusk'] .ambient {
+  background:
+    radial-gradient(ellipse 95% 65% at 6% -8%, rgba(255, 146, 112, 0.22), transparent 64%),
+    radial-gradient(ellipse 85% 60% at 96% 12%, rgba(210, 165, 255, 0.16), transparent 66%),
+    radial-gradient(ellipse 90% 55% at 55% 108%, rgba(255, 190, 130, 0.12), transparent 68%),
+    linear-gradient(180deg, #1d1320 0%, #120b16 52%, #09060c 100%);
+}
+
+html[data-theme='dusk'] .ambient::before {
+  background:
+    radial-gradient(42% 38% at 16% 4%, rgba(255, 179, 138, 0.36), transparent 72%),
+    radial-gradient(38% 42% at 84% 22%, rgba(210, 165, 255, 0.27), transparent 74%),
+    radial-gradient(48% 36% at 52% 104%, rgba(255, 201, 143, 0.2), transparent 72%);
+}
+
+html[data-theme='dusk'] .ambient::after {
+  background: linear-gradient(115deg,
+    transparent 34%,
+    rgba(255, 179, 138, 0.16) 46%,
+    rgba(210, 165, 255, 0.12) 55%,
+    transparent 66%);
+}
+
+/* ---------- Ozean: kühl, dunkel, klar ---------- */
+html[data-theme='ocean'] {
+  color-scheme: dark;
+  --bg: #06131f;
+  --bg-deep: #030d17;
+  --bg-raised: #0a1d2c;
+  --panel: rgba(14, 40, 59, 0.68);
+  --panel-solid: #0b1f2e;
+  --panel-strong: rgba(18, 48, 70, 0.88);
+  --panel-soft: rgba(196, 235, 255, 0.035);
+  --line: rgba(140, 205, 255, 0.12);
+  --line-strong: rgba(150, 214, 255, 0.23);
+  --text: #e9f5ff;
+  --text-2: #a4c2d6;
+  --text-3: #6e91a8;
+  --text-4: #607f95;
+  --accent: #67b9ff;
+  --accent-soft: rgba(103, 185, 255, 0.14);
+  --accent-strong: #9bd6ff;
+  --sky: #8ed6ff;
+  --sky-soft: rgba(142, 214, 255, 0.13);
+  --warm: #ffd08b;
+  --warm-soft: rgba(255, 208, 139, 0.11);
+  --violet: #b9a5ff;
+  --violet-soft: rgba(185, 165, 255, 0.12);
+  --success: #7de3bb;
+  --shadow: 0 24px 70px -32px rgba(0, 8, 20, 0.85);
+  --shadow-soft: 0 16px 46px -28px rgba(0, 8, 20, 0.78);
+  --chart-line: #67b9ff;
+  --chart-rain: #8ed6ff;
+  --chart-night: rgba(103, 185, 255, 0.06);
+  --glass-tint: rgba(103, 185, 255, 0.2);
+  --glass-line: rgba(155, 214, 255, 0.46);
+  --glass-glow: 0 0 60px -10px rgba(103, 185, 255, 0.58);
+}
+
+html[data-theme='ocean'] .ambient {
+  background:
+    radial-gradient(ellipse 95% 65% at 6% -8%, rgba(67, 157, 255, 0.22), transparent 64%),
+    radial-gradient(ellipse 85% 60% at 96% 12%, rgba(125, 227, 255, 0.15), transparent 66%),
+    radial-gradient(ellipse 90% 55% at 55% 108%, rgba(122, 142, 255, 0.14), transparent 68%),
+    linear-gradient(180deg, #082034 0%, #051321 52%, #030a12 100%);
+}
+
+html[data-theme='ocean'] .ambient::before {
+  background:
+    radial-gradient(42% 38% at 16% 4%, rgba(103, 185, 255, 0.35), transparent 72%),
+    radial-gradient(38% 42% at 84% 22%, rgba(125, 227, 255, 0.25), transparent 74%),
+    radial-gradient(48% 36% at 52% 104%, rgba(122, 142, 255, 0.22), transparent 72%);
+}
+
+html[data-theme='ocean'] .ambient::after {
+  background: linear-gradient(115deg,
+    transparent 34%,
+    rgba(103, 185, 255, 0.15) 46%,
+    rgba(125, 227, 255, 0.11) 55%,
+    transparent 66%);
+}
+
+/* ---------- Nordwald: grün, dunkel, natürlich ---------- */
+html[data-theme='forest'] {
+  color-scheme: dark;
+  --bg: #081712;
+  --bg-deep: #040e0b;
+  --bg-raised: #0d221b;
+  --panel: rgba(15, 43, 34, 0.68);
+  --panel-solid: #0b1d17;
+  --panel-strong: rgba(20, 52, 42, 0.88);
+  --panel-soft: rgba(210, 255, 232, 0.035);
+  --line: rgba(140, 230, 180, 0.12);
+  --line-strong: rgba(150, 240, 190, 0.22);
+  --text: #eafaf1;
+  --text-2: #a4c8b6;
+  --text-3: #719585;
+  --text-4: #627e71;
+  --accent: #6fe0a6;
+  --accent-soft: rgba(111, 224, 166, 0.14);
+  --accent-strong: #9ff0c4;
+  --sky: #86dbd0;
+  --sky-soft: rgba(134, 219, 208, 0.12);
+  --warm: #ffd08b;
+  --warm-soft: rgba(255, 208, 139, 0.11);
+  --violet: #b8c9ff;
+  --violet-soft: rgba(184, 201, 255, 0.11);
+  --success: #8ce7b8;
+  --shadow: 0 24px 70px -32px rgba(0, 12, 8, 0.84);
+  --shadow-soft: 0 16px 46px -28px rgba(0, 12, 8, 0.76);
+  --chart-line: #6fe0a6;
+  --chart-rain: #86dbd0;
+  --chart-night: rgba(111, 224, 166, 0.055);
+  --glass-tint: rgba(111, 224, 166, 0.19);
+  --glass-line: rgba(159, 240, 196, 0.44);
+  --glass-glow: 0 0 60px -10px rgba(111, 224, 166, 0.54);
+}
+
+html[data-theme='forest'] .ambient {
+  background:
+    radial-gradient(ellipse 95% 65% at 6% -8%, rgba(78, 190, 130, 0.2), transparent 64%),
+    radial-gradient(ellipse 85% 60% at 96% 12%, rgba(134, 219, 208, 0.13), transparent 66%),
+    radial-gradient(ellipse 90% 55% at 55% 108%, rgba(174, 141, 255, 0.1), transparent 68%),
+    linear-gradient(180deg, #0b221a 0%, #061510 52%, #030906 100%);
+}
+
+html[data-theme='forest'] .ambient::before {
+  background:
+    radial-gradient(42% 38% at 16% 4%, rgba(111, 224, 166, 0.33), transparent 72%),
+    radial-gradient(38% 42% at 84% 22%, rgba(134, 219, 208, 0.22), transparent 74%),
+    radial-gradient(48% 36% at 52% 104%, rgba(174, 141, 255, 0.18), transparent 72%);
+}
+
+html[data-theme='forest'] .ambient::after {
+  background: linear-gradient(115deg,
+    transparent 34%,
+    rgba(111, 224, 166, 0.14) 46%,
+    rgba(134, 219, 208, 0.1) 55%,
+    transparent 66%);
+}
+
+/* ---------- Akzentfarben für dunkle Farbwelten ---------- */
+html[data-accent='mint'] {
+  --accent: #7deed3;
+  --accent-soft: rgba(125, 238, 211, 0.14);
+  --accent-strong: #a5ffe7;
+  --sky: #7cc8ff;
+  --sky-soft: rgba(124, 200, 255, 0.14);
+  --chart-line: #89f4d9;
+  --glass-tint: rgba(125, 238, 211, 0.22);
+  --glass-line: rgba(165, 255, 231, 0.5);
+  --glass-glow: 0 0 60px -10px rgba(125, 238, 211, 0.7);
+}
+
+html[data-accent='sky'] {
+  --accent: #74c0ff;
+  --accent-soft: rgba(116, 192, 255, 0.14);
+  --accent-strong: #a7dcff;
+  --sky: #9bd8ff;
+  --sky-soft: rgba(155, 216, 255, 0.14);
+  --chart-line: #74c0ff;
+  --glass-tint: rgba(116, 192, 255, 0.21);
+  --glass-line: rgba(167, 220, 255, 0.48);
+  --glass-glow: 0 0 60px -10px rgba(116, 192, 255, 0.66);
+}
+
+html[data-accent='violet'] {
+  --accent: #c0aaff;
+  --accent-soft: rgba(192, 170, 255, 0.15);
+  --accent-strong: #dccdff;
+  --sky: #9fb8ff;
+  --sky-soft: rgba(159, 184, 255, 0.13);
+  --chart-line: #c0aaff;
+  --glass-tint: rgba(192, 170, 255, 0.21);
+  --glass-line: rgba(220, 205, 255, 0.48);
+  --glass-glow: 0 0 60px -10px rgba(192, 170, 255, 0.66);
+}
+
+html[data-accent='amber'] {
+  --accent: #ffc46b;
+  --accent-soft: rgba(255, 196, 107, 0.14);
+  --accent-strong: #ffdaa0;
+  --sky: #ffd08b;
+  --sky-soft: rgba(255, 208, 139, 0.13);
+  --chart-line: #ffc46b;
+  --glass-tint: rgba(255, 196, 107, 0.2);
+  --glass-line: rgba(255, 218, 160, 0.47);
+  --glass-glow: 0 0 60px -10px rgba(255, 196, 107, 0.64);
+}
+
+html[data-accent='coral'] {
+  --accent: #ff9c8c;
+  --accent-soft: rgba(255, 156, 140, 0.14);
+  --accent-strong: #ffc0b5;
+  --sky: #ffb3a8;
+  --sky-soft: rgba(255, 179, 168, 0.13);
+  --chart-line: #ff9c8c;
+  --glass-tint: rgba(255, 156, 140, 0.2);
+  --glass-line: rgba(255, 192, 181, 0.47);
+  --glass-glow: 0 0 60px -10px rgba(255, 156, 140, 0.62);
+}
+
+html[data-accent='slate'] {
+  --accent: #b8c7d1;
+  --accent-soft: rgba(184, 199, 209, 0.14);
+  --accent-strong: #dbe6ec;
+  --sky: #9fb8c8;
+  --sky-soft: rgba(159, 184, 200, 0.12);
+  --chart-line: #b8c7d1;
+  --glass-tint: rgba(184, 199, 209, 0.16);
+  --glass-line: rgba(219, 230, 236, 0.4);
+  --glass-glow: 0 0 60px -10px rgba(184, 199, 209, 0.5);
+}
+
+/* ---------- Akzentfarben im hellen Schema ---------- */
+html[data-theme='day'][data-accent='mint'] {
+  --accent: #0d9f86;
+  --accent-soft: rgba(13, 159, 134, 0.12);
+  --accent-strong: #087a68;
+  --chart-line: #0f9b83;
+  --glass-tint: rgba(13, 159, 134, 0.16);
+  --glass-line: rgba(13, 159, 134, 0.45);
+  --glass-glow: 0 0 50px -12px rgba(13, 159, 134, 0.5);
+}
+
+html[data-theme='day'][data-accent='sky'] {
+  --accent: #2478bb;
+  --accent-soft: rgba(36, 120, 187, 0.12);
+  --accent-strong: #175d93;
+  --chart-line: #2478bb;
+  --glass-tint: rgba(36, 120, 187, 0.15);
+  --glass-line: rgba(36, 120, 187, 0.42);
+  --glass-glow: 0 0 50px -12px rgba(36, 120, 187, 0.46);
+}
+
+html[data-theme='day'][data-accent='violet'] {
+  --accent: #7558be;
+  --accent-soft: rgba(117, 88, 190, 0.12);
+  --accent-strong: #5c4299;
+  --chart-line: #7558be;
+  --glass-tint: rgba(117, 88, 190, 0.15);
+  --glass-line: rgba(117, 88, 190, 0.42);
+  --glass-glow: 0 0 50px -12px rgba(117, 88, 190, 0.46);
+}
+
+html[data-theme='day'][data-accent='amber'] {
+  --accent: #a16a12;
+  --accent-soft: rgba(161, 106, 18, 0.12);
+  --accent-strong: #7d510d;
+  --chart-line: #a16a12;
+  --glass-tint: rgba(161, 106, 18, 0.15);
+  --glass-line: rgba(161, 106, 18, 0.42);
+  --glass-glow: 0 0 50px -12px rgba(161, 106, 18, 0.44);
+}
+
+html[data-theme='day'][data-accent='coral'] {
+  --accent: #bd5344;
+  --accent-soft: rgba(189, 83, 68, 0.12);
+  --accent-strong: #963f33;
+  --chart-line: #bd5344;
+  --glass-tint: rgba(189, 83, 68, 0.15);
+  --glass-line: rgba(189, 83, 68, 0.42);
+  --glass-glow: 0 0 50px -12px rgba(189, 83, 68, 0.44);
+}
+
+html[data-theme='day'][data-accent='slate'] {
+  --accent: #4d6472;
+  --accent-soft: rgba(77, 100, 114, 0.12);
+  --accent-strong: #344955;
+  --chart-line: #4d6472;
+  --glass-tint: rgba(77, 100, 114, 0.14);
+  --glass-line: rgba(77, 100, 114, 0.4);
+  --glass-glow: 0 0 50px -12px rgba(77, 100, 114, 0.42);
+}
+
+/* ---------- Bedienelemente ---------- */
+.accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  justify-content: flex-end;
+}
+
+.accent-swatch {
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--swatch);
+  box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.accent-swatch:hover {
+  transform: translateY(-1px);
+}
+
+.accent-swatch.is-active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 2px 10px -2px rgba(0, 0, 0, 0.55);
+}
+
+.accent-mint { --swatch: #7deed3; }
+.accent-sky { --swatch: #74c0ff; }
+.accent-violet { --swatch: #c0aaff; }
+.accent-amber { --swatch: #ffc46b; }
+.accent-coral { --swatch: #ff9c8c; }
+.accent-slate { --swatch: #b8c7d1; }
+
+.onboard-theme-options {
+  flex-wrap: wrap;
+}
+
+.onboard-theme-option {
+  flex: 1 1 28%;
+  min-width: 88px;
+}
+
+.onboard-theme-option.is-active {
+  background: var(--accent-soft);
+}
