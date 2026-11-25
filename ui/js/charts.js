@@ -90,10 +90,11 @@ function xTicks(data, range) {
   const stepHours = range === '24h' ? 6 : 6;
   const candidate = new Date(first);
   candidate.setMinutes(0, 0, 0);
-  candidate.setHours(candidate.getHours() + ((stepHours - (candidate.getHours() % stepHours)) % stepHours));
+  const berlinHour = () => Number(formatTime(candidate).split(':')[0]) || 0;
+  candidate.setTime(candidate.getTime() + ((stepHours - (berlinHour() % stepHours)) % stepHours) * 3600000);
   while (candidate <= last) {
     ticks.push({ date: new Date(candidate), label: formatTime(candidate) });
-    candidate.setHours(candidate.getHours() + stepHours);
+    candidate.setTime(candidate.getTime() + stepHours * 3600000);
   }
   return ticks;
 }
@@ -108,6 +109,8 @@ export function renderTrendChart(container, model, range = '48h', settings = { t
     container._trendResizeObserver.disconnect();
     container._trendResizeObserver = null;
   }
+  if (container._trendFrame) cancelAnimationFrame(container._trendFrame);
+  container._trendFrame = 0;
 
   const draw = () => {
     const width = Math.max(420, Math.floor(container.clientWidth));
@@ -282,10 +285,11 @@ export function renderTrendChart(container, model, range = '48h', settings = { t
 
   draw();
   if (typeof ResizeObserver !== 'undefined') {
-    let frame = 0;
     container._trendResizeObserver = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => draw());
+      cancelAnimationFrame(container._trendFrame);
+      container._trendFrame = requestAnimationFrame(() => {
+        if (container.isConnected) draw();
+      });
     });
     container._trendResizeObserver.observe(container);
   }
