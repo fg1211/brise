@@ -1,0 +1,17 @@
+# Build-Artefakte
+src-tauri/target/
+src-tauri/gen/schemas/
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editoren / System
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Lokale Zusatzdateien
+*.log
