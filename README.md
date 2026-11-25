@@ -66,7 +66,7 @@ Falls kein vorgebautes Binary vorhanden ist, baut `install.sh` automatisch aus d
 ### Portable Variante
 
 ```bash
-tar -xzf dist/brise-1.0.2-x86_64.tar.gz
+tar -xzf dist/brise-1.0.3-x86_64.tar.gz
 cd dist && ./install.sh
 ```
 
@@ -78,7 +78,7 @@ Sobald das Paket im AUR liegt, genügt:
 yay -S brise
 ```
 
-Das Paket baut Brise aus den Quellen des GitHub-Tags `v1.0.2` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
+Das Paket baut Brise aus den Quellen des GitHub-Tags `v1.0.3` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
 
 Das AUR-Paket wird **nicht** automatisch von diesem Repository veröffentlicht — dafür ist ein eigener AUR-Account nötig. Die fertige `PKGBUILD` liegt unter [`aur/PKGBUILD`](aur/PKGBUILD); die Schritte zum Veröffentlichen stehen in [`aur/README.md`](aur/README.md).
 
