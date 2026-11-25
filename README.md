@@ -66,7 +66,7 @@ Falls kein vorgebautes Binary vorhanden ist, baut `install.sh` automatisch aus d
 ### Portable Variante
 
 ```bash
-tar -xzf dist/brise-1.0.0-x86_64.tar.gz
+tar -xzf dist/brise-1.0.2-x86_64.tar.gz
 cd dist && ./install.sh
 ```
 
@@ -78,7 +78,7 @@ Sobald das Paket im AUR liegt, genügt:
 yay -S brise
 ```
 
-Das Paket baut Brise aus den Quellen des GitHub-Tags `v1.0.0` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher startet das Fenster standardmäßig auf `DP-2`; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor wählen.
+Das Paket baut Brise aus den Quellen des GitHub-Tags `v1.0.2` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
 
 Das AUR-Paket wird **nicht** automatisch von diesem Repository veröffentlicht — dafür ist ein eigener AUR-Account nötig. Die fertige `PKGBUILD` liegt unter [`aur/PKGBUILD`](aur/PKGBUILD); die Schritte zum Veröffentlichen stehen in [`aur/README.md`](aur/README.md).
 
@@ -106,7 +106,7 @@ In der Suche lassen sich deutsche Orte beliebig eingeben — auch Orte, die nich
 
 ## Monitor-Verhalten auf Hyprland
 
-`brise-launch` registriert vor dem Start eine Fensterregel, die das Fenster standardmäßig auf **DP-2** legt. Der Hauptmonitor bleibt dadurch ungestört. Ein anderer Monitor lässt sich so wählen:
+`brise-launch` registriert vor dem Start eine Fensterregel, die das Fenster **geteilt (`tile=true`) auf dem Monitor unter dem Mauszeiger** öffnet. Die genaue Position innerhalb des Layouts bestimmt Hyprland. Ein Monitor kann auch ausdrücklich vorgegeben werden:
 
 ```bash
 BRISE_MONITOR=DP-1 brise-launch
