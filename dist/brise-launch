@@ -60,12 +60,13 @@ if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; the
 fi
 
 # Keine künstlichen Frame-Limits und kein erzwungenes Timer-Vblank: WebKit
-# soll sich am Vblank des Monitors ausrichten. Auf NVIDIA verhindert diese
-# Variable zusätzlich Protokollfehler im DMA-BUF-Pfad.
+# soll sich am Vblank des Monitors ausrichten. Der NVIDIA-Sync-Flag wird
+# bewusst entfernt: Er erzeugt auf dem 180-Hz-Monitor sichtbares Ruckeln,
+# während WebKit ohne ihn flüssig scrollt.
 unset WEBKIT_DISPLAY_REFRESH_THROTTLE_FPS
 unset WEBKIT_FORCE_VBLANK_TIMER
 unset WEBKIT_DISABLE_COMPOSITING_MODE
-export __NV_DISABLE_EXPLICIT_SYNC="${__NV_DISABLE_EXPLICIT_SYNC:-1}"
+unset __NV_DISABLE_EXPLICIT_SYNC
 
 if [ -n "$MONITOR" ]; then
   export BRISE_MONITOR="$MONITOR"
