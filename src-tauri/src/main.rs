@@ -591,7 +591,9 @@ async fn get_current_summaries(
         let app = app_for_tasks.clone();
         async move { fetch_summary(&app, city, force).await }
     }))
-    .buffer_unordered(5)
+    // Nicht alle Favoriten gleichzeitig abfragen: zu viele parallele DWD-
+    // Antworten blockieren den WebKit-Hauptthread und das Scrollen ruckelt.
+    .buffer_unordered(2)
     .collect::<Vec<Value>>()
     .await;
 
