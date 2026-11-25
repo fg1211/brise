@@ -186,7 +186,7 @@ dependencies = [
 
 [[package]]
 name = "brise"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -197,6 +197,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "webkit2gtk",
 ]
 
 [[package]]
