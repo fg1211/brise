@@ -56,21 +56,6 @@ const SEARCH_COMMANDS = [
   { id: 'about', title: 'Über Brise', subtitle: 'Datenquellen und Hintergründe', icon: 'info' },
 ];
 
-const MAP_LABEL_OFFSET = {
-  duesseldorf: -24,
-  koeln: 27,
-  frankfurt: -24,
-  mainz: 28,
-  dortmund: 27,
-  muenster: -24,
-};
-
-const MAP_SCALES = {
-  temp: [[-10, '#4e83c4'], [0, '#5da9d8'], [8, '#7fd8c3'], [16, '#e4d17f'], [23, '#eda36a'], [32, '#e36b5e']],
-  wind: [[0, '#5a94bd'], [12, '#7fd8c3'], [25, '#e4d17f'], [42, '#eda36a'], [65, '#e36b5e']],
-  sun: [[0, '#596b7d'], [12, '#7ea7b4'], [30, '#e4d17f'], [50, '#ffd08b'], [60, '#ffca73']],
-};
-
 const state = {
   settings: loadSettings(),
   favorites: loadFavorites(),
@@ -371,7 +356,8 @@ function summaryFromBundle(city, bundle) {
 function applySummaries(results) {
   for (const result of results || []) {
     if (!result?.city_id || !CITY_BY_ID[result.city_id]) continue;
-    if (result.weather) {
+    const usableWeather = finite(result.weather?.temperature) && Object.keys(result.weather).length > 1;
+    if (usableWeather) {
       const existing = state.summaries.get(result.city_id);
       if (!existing || (result.fetched_at || 0) >= (existing.fetched_at || 0)) {
         state.summaries.set(result.city_id, result);
@@ -467,6 +453,12 @@ async function loadWeather(cityId, options = {}) {
       } else {
         renderWeatherError(city, error);
         setLiveState('error', 'DWD nicht erreichbar');
+        const indicator = $('#weatherUpdated');
+        if (indicator) {
+          indicator.dataset.stale = 'false';
+          indicator.classList.remove('is-loading');
+          indicator.innerHTML = '<i class="live-dot"></i>Nicht erreichbar';
+        }
       }
     }
     if (!quiet) console.warn('Brise: Wetter konnte nicht geladen werden', error);
@@ -499,6 +491,11 @@ async function loadFavoriteSummaries(force = false) {
     applySummaries(results);
   } catch (error) {
     console.warn('Brise: Favoriten konnten nicht aktualisiert werden', error);
+    for (const city of cities) {
+      if (!state.summaries.has(city.id)) {
+        state.summaries.set(city.id, { city_id: city.id, error: usefulError(error) });
+      }
+    }
     if (force) showToast('Die Ortsübersicht konnte nicht aktualisiert werden.', { tone: 'warn', icon: 'cloud' });
   } finally {
     state.favoriteSummariesLoading = false;
@@ -594,6 +591,12 @@ function metricTile(iconName, label, value, unit, sub, barPercent = null, tone =
 function renderWeather() {
   const container = $('#weatherContent');
   if (!container) return;
+  const previousChart = $('#trendChart', container);
+  if (previousChart?._trendResizeObserver) {
+    previousChart._trendResizeObserver.disconnect();
+    previousChart._trendResizeObserver = null;
+  }
+  if (previousChart?._trendFrame) cancelAnimationFrame(previousChart._trendFrame);
   const city = currentCity();
   const entry = state.weather.get(city.id);
   if (!entry) {
@@ -771,9 +774,12 @@ function renderWeather() {
   const sunDotX = 160 + 116 * Math.cos(sunAngle);
   const sunDotY = 124 - 116 * Math.sin(sunAngle);
   const sunProgressPath = daylightProgress > 0
-    ? `M 44 124 A 116 116 0 0 ${daylightProgress > 50 ? 1 : 0} ${sunDotX.toFixed(2)} ${sunDotY.toFixed(2)}`
+    ? `M 44 124 A 116 116 0 0 1 ${sunDotX.toFixed(2)} ${sunDotY.toFixed(2)}`
     : '';
-  const nightProgress = daylightProgress >= 100 ? 0 : daylightProgress;
+  const nowMs = Date.now();
+  const dayPhase = sun.sunrise && sun.sunset
+    ? (nowMs < sun.sunrise.getTime() ? 'before' : nowMs >= sun.sunset.getTime() ? 'after' : 'day')
+    : 'day';
 
   const trendCard = `<section class="card trend-card">
     <header class="card-head">
@@ -814,7 +820,7 @@ function renderWeather() {
         <p class="kicker">Tageslicht</p>
         <h3 class="card-title">Sonne & Mond</h3>
       </div>
-      <span class="pill pill-muted">${nightProgress >= 100 ? 'Sonne ist untergegangen' : nightProgress <= 0 ? 'Vor Sonnenaufgang' : `${daylightProgress} % des Tages`}</span>
+      <span class="pill pill-muted">${dayPhase === 'before' ? 'Vor Sonnenaufgang' : dayPhase === 'after' ? 'Sonne ist untergegangen' : `${daylightProgress} % des Tages`}</span>
     </header>
     <div class="sun-arc">
       <svg viewBox="0 0 320 140" role="img" aria-label="Sonnenstand im Tagesverlauf">
@@ -1467,6 +1473,7 @@ function runCommand(commandId) {
 }
 
 function openSearch(prefill = '') {
+  if (state.overlayOpen && !state.overlayLocked) closeOverlay();
   const overlay = showOverlay(`<div class="modal command-modal" role="dialog" aria-modal="true" aria-label="Orte und Befehle suchen">
     <div class="command-search">
       ${icon('search', 19)}
@@ -1862,7 +1869,7 @@ function radarShellMarkup(city) {
       </article>
       <article class="card radar-legend-card">
         <h3 class="radar-legend-title">Intensität lesen</h3>
-        ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${entry.label === 'leicht' ? '< 2' : entry.label === 'mäßig' ? '2–10' : entry.label === 'kräftig' ? '10–25' : entry.label === 'stark' ? '25–50' : '> 50'} mm/h</span></div>`).join('')}
+        ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${escapeHTML(entry.range)}</span></div>`).join('')}
       </article>
       <article class="card radar-source-card">
         <div class="radar-source-head"><span class="radar-source-mark">DWD</span><span>Amtliches Radar</span></div>
@@ -1904,7 +1911,7 @@ function renderRadarSide(renderer) {
     </article>
     <article class="card radar-legend-card">
       <h3 class="radar-legend-title">Intensität lesen</h3>
-      ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${entry.label === 'leicht' ? '< 2' : entry.label === 'mäßig' ? '2–10' : entry.label === 'kräftig' ? '10–25' : entry.label === 'stark' ? '25–50' : '> 50'} mm/h</span></div>`).join('')}
+      ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${escapeHTML(entry.range)}</span></div>`).join('')}
     </article>
     <article class="card radar-source-card">
       <div class="radar-source-head"><span class="radar-source-mark">DWD</span><span>Amtliches Radar</span></div>
@@ -1958,7 +1965,19 @@ function mountRadarRenderer(city) {
     onFrame: updateRadarFrameUI,
   });
   state.radarRenderer = renderer;
-  renderer.setData(state.radarData, city);
+  try {
+    renderer.setData(state.radarData, city);
+  } catch (error) {
+    renderer.destroy();
+    state.radarRenderer = null;
+    state.radarData = null;
+    state.radarCityId = null;
+    state.radarError = usefulError(error);
+    state.radarStatus = 'error';
+    renderRadarView();
+    setLiveState('error', 'Radar nicht lesbar');
+    return;
+  }
   state.radarFrameIndex = renderer.index;
   renderRadarSide(renderer);
   updateRadarFrameUI(renderer.frames[renderer.index], renderer.index);
@@ -1983,16 +2002,18 @@ function renderRadarView() {
 
 async function loadRadar(force = false) {
   const city = currentCity();
-  if (state.radarLoading) return;
+  const cityChanged = state.radarCityId !== city.id;
+  if (state.radarLoading && !cityChanged) return;
+  const seq = ++state.radarSeq;
   state.radarLoading = true;
   state.radarError = null;
-  const cacheValid = state.radarData && state.radarCityId === city.id && Date.now() - state.radarFetchedAt < 4 * 60 * 1000;
+  const cacheValid = state.radarData && !cityChanged && Date.now() - state.radarFetchedAt < 4 * 60 * 1000;
   if (cacheValid && !force) {
     state.radarLoading = false;
     renderRadarView();
     return;
   }
-  if (state.radarCityId !== city.id) {
+  if (cityChanged) {
     state.radarData = null;
     state.radarCityId = null;
   }
@@ -2000,22 +2021,23 @@ async function loadRadar(force = false) {
   setPageLive(false);
   try {
     const data = await fetchRadar(city);
+    if (seq !== state.radarSeq) return;
     state.radarData = data;
     state.radarCityId = city.id;
     state.radarFetchedAt = Date.now();
     state.radarError = null;
     state.radarStatus = 'ready';
     renderRadarView();
+    if (data?.stale) setLiveState('stale', 'Offline-Radar');
   } catch (error) {
+    if (seq !== state.radarSeq) return;
     state.radarError = usefulError(error);
     state.radarStatus = 'error';
     renderRadarView();
     setLiveState('error', 'Radar nicht erreichbar');
     console.warn('Brise: Radar konnte nicht geladen werden', error);
   } finally {
-    state.radarLoading = false;
-    const loader = $('.radar-loading');
-    if (loader && state.radarData) loader.remove();
+    if (seq === state.radarSeq) state.radarLoading = false;
   }
 }
 
@@ -2363,7 +2385,11 @@ function showMapTooltip(cityId, x, y) {
   const weather = mapCityWeather(cityId);
   const rect = wrap.getBoundingClientRect();
   const left = clamp(x - rect.left, 92, rect.width - 92);
-  const top = clamp(y - rect.top, 60, rect.height - 20);
+  const rawTop = y - rect.top;
+  const below = rawTop < 118;
+  const top = below
+    ? clamp(rawTop, 8, rect.height - 8)
+    : clamp(rawTop, 118, rect.height - 20);
   const temp = weather ? formatTemp(weather.temperature, state.settings.tempUnit) : '–';
   const condition = weather ? summaryLabel(city, weather) : 'Keine Daten';
   const wind = weather ? formatWind(weather.wind_speed_10, state.settings.windUnit, 0) : null;
@@ -2372,6 +2398,7 @@ function showMapTooltip(cityId, x, y) {
     <div class="map-tooltip-meta">${weather ? weatherIcon(summaryIconName(city, weather)) : ''}${wind ? `${icon('wind', 9)} ${escapeHTML(wind)}` : 'Keine Stationsdaten'}</div>`;
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
+  tooltip.classList.toggle('is-below', below);
   tooltip.hidden = false;
 }
 
@@ -2398,6 +2425,10 @@ function renderCurrentView() {
 function switchView(view, options = {}) {
   if (!VIEW_IDS.has(view)) return;
   const changed = state.view !== view;
+  if (changed && state.view === 'radar' && view !== 'radar') {
+    state.radarRenderer?.destroy();
+    state.radarRenderer = null;
+  }
   state.view = view;
   $$('.nav-item').forEach((button) => {
     const active = button.dataset.viewTarget === view;
@@ -2643,6 +2674,7 @@ function bindEvents() {
   });
   favorites?.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target.closest('[data-remove-favorite]') || event.target.tagName === 'BUTTON') return;
     const row = event.target.closest('[data-favorite-city]');
     if (!row) return;
     event.preventDefault();
@@ -2698,6 +2730,7 @@ function bindEvents() {
     const typing = active && (['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) || active.isContentEditable);
     const mod = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
+    if (mod && state.overlayLocked) return;
     if (mod && key === 'k') {
       event.preventDefault();
       openSearch();
@@ -2730,7 +2763,9 @@ function bindEvents() {
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
+    if (document.hidden) {
+      state.radarRenderer?.pause();
+    } else {
       const entry = state.weather.get(currentCity().id);
       const age = entry ? Date.now() - entry.at : Infinity;
       if (age > 10 * 60 * 1000) loadWeather(currentCity().id, { quiet: true });
