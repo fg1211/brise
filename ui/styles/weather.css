@@ -1390,6 +1390,16 @@ html[data-theme='day'] .hourly-rail {
   padding-bottom: 0;
 }
 
+html[data-night='on'] .sun-card {
+  background: linear-gradient(160deg, rgba(28, 36, 62, 0.74), rgba(11, 18, 33, 0.72));
+  border-color: rgba(190, 205, 255, 0.16);
+}
+
+html[data-night='on'][data-theme='day'] .sun-card {
+  background: linear-gradient(160deg, rgba(232, 236, 255, 0.86), rgba(238, 243, 255, 0.76));
+  border-color: rgba(108, 122, 183, 0.22);
+}
+
 .sun-arc {
   padding: 4px 16px 0;
   position: relative;
@@ -1434,9 +1444,25 @@ html[data-theme='day'] .hourly-rail {
   filter: drop-shadow(0 0 8px rgba(255, 208, 139, 0.65));
 }
 
+.sun-arc-stars circle {
+  fill: rgba(226, 234, 255, 0.78);
+  animation: starTwinkle 5s ease-in-out infinite;
+}
+
+.sun-arc-stars circle:nth-child(2) { animation-delay: -1.6s; }
+.sun-arc-stars circle:nth-child(3) { animation-delay: -3.1s; }
+.sun-arc-stars circle:nth-child(4) { animation-delay: -4.2s; }
+
+.sun-arc-moon-path {
+  fill: none;
+  stroke: rgba(196, 205, 255, 0.24);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 5;
+}
+
 .sun-arc-moon {
-  fill: #dfe8f8;
-  opacity: 0.7;
+  fill: #e7ecff;
+  filter: drop-shadow(0 0 7px rgba(190, 205, 255, 0.8));
 }
 
 .sun-times {
@@ -1538,51 +1564,89 @@ html[data-theme='day'] .daylight-line {
   color: var(--text-2);
 }
 
-.moon-row {
+.moon-feature {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 11px 20px 14px;
+  gap: 16px;
+  padding: 13px 20px 17px;
+  border-top: 1px solid var(--line);
+  background: radial-gradient(circle at 18% 50%, rgba(150, 170, 240, 0.1), transparent 58%);
 }
 
-.moon-icon-wrap {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+.moon-stage {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
-  background: rgba(192, 170, 255, 0.07);
-  border: 1px solid rgba(192, 170, 255, 0.1);
-  flex: 0 0 auto;
 }
 
-.moon-phase-icon {
+.moon-stage-glow {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(198, 212, 255, 0.2), transparent 68%);
+  filter: blur(5px);
+}
+
+.moon-stage .moon-phase-icon {
+  position: relative;
   display: block;
+  filter: drop-shadow(0 0 14px rgba(198, 212, 255, 0.3));
 }
 
-.moon-copy {
+.moon-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.moon-copy strong {
-  display: block;
-  font-size: 10.5px;
-  font-weight: 550;
+.moon-kicker {
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--violet);
 }
 
-.moon-copy span {
-  display: block;
-  margin-top: 2px;
-  font-size: 8.5px;
+.moon-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.moon-detail {
+  font-size: 9px;
   color: var(--text-3);
 }
 
-.moon-percent {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: -0.03em;
+.moon-meter {
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+html[data-theme='day'] .moon-meter {
+  background: rgba(18, 66, 59, 0.1);
+}
+
+.moon-meter i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--violet), #dfe8ff);
+}
+
+.moon-caption {
+  margin-top: 2px;
+  font-size: 8.5px;
+  color: var(--text-4);
   font-variant-numeric: tabular-nums;
 }
 
