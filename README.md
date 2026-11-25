@@ -66,7 +66,7 @@ Falls kein vorgebautes Binary vorhanden ist, baut `install.sh` automatisch aus d
 ### Portable Variante
 
 ```bash
-tar -xzf dist/brise-1.0.5-x86_64.tar.gz
+tar -xzf dist/brise-1.0.6-x86_64.tar.gz
 cd dist && ./install.sh
 ```
 
@@ -78,7 +78,7 @@ Mit yay:
 yay -S brise
 ```
 
-Das Paket baut Brise aus den Quellen von `v1.0.5` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
+Das Paket baut Brise aus den Quellen von `v1.0.6` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
 
 Noch nicht im AUR? Unter [`aur/PKGBUILD`](aur/PKGBUILD) liegt ein Paketrezept – damit baut `makepkg -si` Brise selbst.
 
