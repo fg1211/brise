@@ -767,6 +767,44 @@ fn place_on_secondary_monitor(window: &tauri::WebviewWindow) {
     }
 }
 
+#[cfg(target_os = "linux")]
+mod webkit_ffi {
+    use std::ffi::{c_char, c_int, c_void};
+
+    extern "C" {
+        fn webkit_settings_get_all_features() -> *mut c_void;
+        fn webkit_feature_list_find(list: *mut c_void, identifier: *const c_char) -> *mut c_void;
+        fn webkit_settings_set_feature_enabled(
+            settings: *mut c_void,
+            feature: *mut c_void,
+            enabled: c_int,
+        );
+        fn webkit_feature_list_unref(list: *mut c_void);
+    }
+
+    /// WebKit soll die echte Monitorfrequenz nutzen, statt sie auf „nah an 60 fps“
+    /// zu begrenzen. Die Feature-API ist in der Rust-Bindung noch nicht
+    /// enthalten, daher rufen wir sie direkt auf.
+    pub fn use_display_refresh_rate(settings: &webkit2gtk::Settings) {
+        use webkit2gtk::glib::translate::ToGlibPtr;
+
+        let features = unsafe { webkit_settings_get_all_features() };
+        if features.is_null() {
+            return;
+        }
+
+        let identifier = b"PreferPageRenderingUpdatesNear60FPS\0";
+        let feature = unsafe { webkit_feature_list_find(features, identifier.as_ptr().cast()) };
+        if !feature.is_null() {
+            let settings_ptr = ToGlibPtr::<*mut webkit2gtk::ffi::WebKitSettings>::to_glib_none(settings).0;
+            unsafe {
+                webkit_settings_set_feature_enabled(settings_ptr.cast(), feature, 0);
+            }
+        }
+        unsafe { webkit_feature_list_unref(features) };
+    }
+}
+
 /// WebKitGTK dauerhaft auf Hardwarebeschleunigung trimmen. Das betrifft auch
 /// das Scrollen: Compositing, 2D-Canvas und WebGL laufen dann über die GPU.
 #[cfg(target_os = "linux")]
@@ -781,6 +819,7 @@ fn enable_gpu_acceleration(window: &tauri::WebviewWindow) {
         settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Always);
         settings.set_enable_webgl(true);
         settings.set_enable_smooth_scrolling(true);
+        webkit_ffi::use_display_refresh_rate(&settings);
     });
 }
 
