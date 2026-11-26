@@ -323,7 +323,7 @@ export function renderDayChart(container, day, settings = { tempUnit: 'c' }) {
     </linearGradient></defs>
     ${labels.map((hour) => `<line class="chart-gridline" x1="${xFor(hour.timestamp)}" y1="${top}" x2="${xFor(hour.timestamp)}" y2="${top + plotHeight}"/>`).join('')}
     <path d="${area}" fill="url(#${gradientId})"/>
-    <path class="chart-line" d="${path}"/>
+    <path class="chart-line" pathLength="1" d="${path}"/>
     ${data.filter((_, index) => index % 3 === 0).map((hour) => `<circle class="day-chart-dot" cx="${xFor(hour.timestamp)}" cy="${yFor(hour.tempC)}" r="2.4"/>`).join('')}
     ${labels.map((hour) => `<text class="chart-axis-label" x="${xFor(hour.timestamp)}" y="${height - 6}" text-anchor="middle">${String(hour.hourNumber).padStart(2, '0')} Uhr</text>`).join('')}
     ${data.filter((_, index) => index % 6 === 0).map((hour) => `<text class="chart-temp-float" x="${xFor(hour.timestamp)}" y="${yFor(hour.tempC) - 8}" text-anchor="middle">${Math.round(tempValue(hour.tempC, settings.tempUnit))}°</text>`).join('')}
