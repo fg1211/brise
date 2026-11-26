@@ -75,7 +75,7 @@ const ACCENT_IDS = new Set(ACCENT_OPTIONS.map(([id]) => id));
 const SEARCH_COMMANDS = [
   { id: 'radar', title: 'Regenradar öffnen', subtitle: 'Niederschlag und 90-Minuten-Prognose', icon: 'radar' },
   { id: 'germany', title: 'Deutschlandkarte', subtitle: 'Wetter aller Regionen im direkten Vergleich', icon: 'mapPinned' },
-  { id: 'refresh', title: 'Wetterdaten aktualisieren', subtitle: 'Neue DWD-Beobachtungen laden', icon: 'refresh' },
+  { id: 'refresh', title: 'Wetterdaten aktualisieren', subtitle: 'Neue Wetterdaten laden', icon: 'refresh' },
   { id: 'settings', title: 'Einstellungen', subtitle: 'Darstellung, Einheiten und Aktualisierung', icon: 'sliders' },
   { id: 'shortcuts', title: 'Tastenkürzel', subtitle: 'Alle Abkürzungen für Brise', icon: 'keyboard' },
   { id: 'about', title: 'Über Brise', subtitle: 'Datenquellen und Hintergründe', icon: 'info' },
@@ -91,6 +91,7 @@ const state = {
   weatherLoading: new Set(),
   offline: new Set(),
   favoriteSummariesLoading: false,
+  favoriteSummariesQueued: false,
   germanyLoading: false,
   germanyLoadedAt: 0,
   germanyError: null,
@@ -201,6 +202,23 @@ async function applyGraphicsSettings() {
   try { await setVsync(state.settings.vsync !== false); } catch (_) { /* nur in der Desktop-App */ }
 }
 
+function providerForCity(city = currentCity()) {
+  const country = String(city?.country || state.settings.country || 'DE').toUpperCase();
+  return country === 'DE' ? (state.settings.provider || 'dwd') : 'open-meteo';
+}
+
+function providerLabel(city) {
+  return providerForCity(city) === 'dwd' ? 'DWD' : 'Open-Meteo';
+}
+
+function updateProviderLabels() {
+  const label = providerLabel();
+  for (const id of ['brandProvider', 'sourceProvider']) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = label;
+  }
+}
+
 function applyLocaleAndRegion() {
   const settings = state.settings;
   setSession({ country: settings.country, language: settings.language, provider: settings.provider });
@@ -208,11 +226,7 @@ function applyLocaleAndRegion() {
   setWeatherLocale(settings.language);
   const germanyNav = document.querySelector('[data-view-target="germany"]');
   if (germanyNav) germanyNav.hidden = settings.country !== 'DE';
-  const providerLabel = settings.country === 'DE' && settings.provider === 'dwd' ? 'DWD' : 'Open-Meteo';
-  for (const id of ['brandProvider', 'sourceProvider']) {
-    const element = document.getElementById(id);
-    if (element) element.textContent = providerLabel;
-  }
+  updateProviderLabels();
   if (settings.country !== 'DE' && state.view === 'germany') switchView('weather');
 }
 
@@ -503,7 +517,8 @@ async function loadWeather(cityId, options = {}) {
   try {
     const bundle = await fetchWeather(city, force);
     if (state.weatherSeq.get(cityId) !== seq) return false;
-    state.offline.delete(cityId);
+    if (bundle.stale) state.offline.add(cityId);
+    else state.offline.delete(cityId);
     state.weather.set(cityId, { bundle, at: Date.now() });
     cacheBundleSummary(city, bundle);
     if (state.view === 'weather' && state.selectedCityId === cityId) {
@@ -517,14 +532,14 @@ async function loadWeather(cityId, options = {}) {
     return true;
   } catch (error) {
     if (state.weatherSeq.get(cityId) !== seq) return false;
+    if (state.weather.has(cityId)) state.offline.add(cityId);
     if (state.selectedCityId === cityId && state.view === 'weather') {
       const existing = state.weather.get(cityId);
       if (existing) {
-        state.offline.add(cityId);
         suppressWeatherAnimations();
         renderWeather();
         setLiveState('stale', 'Offline-Daten');
-        showToast('Keine Verbindung zum DWD. Brise zeigt die zuletzt geladenen Daten.', { tone: 'warn', icon: 'cloud' });
+        showToast('Keine Verbindung zum Wetterdienst. Brise zeigt die zuletzt geladenen Daten.', { tone: 'warn', icon: 'cloud' });
       } else {
         renderWeatherError(city, error);
         setLiveState('error', 'Wetter nicht erreichbar');
@@ -561,7 +576,10 @@ async function loadFavoriteSummaries(force = false) {
     renderFavorites();
     return;
   }
-  if (state.favoriteSummariesLoading) return;
+  if (state.favoriteSummariesLoading) {
+    if (force) state.favoriteSummariesQueued = true;
+    return;
+  }
   state.favoriteSummariesLoading = true;
   try {
     const results = await fetchSummaries(cities, force);
@@ -576,7 +594,10 @@ async function loadFavoriteSummaries(force = false) {
     if (force) showToast('Die Ortsübersicht konnte nicht aktualisiert werden.', { tone: 'warn', icon: 'cloud' });
   } finally {
     state.favoriteSummariesLoading = false;
+    const queued = state.favoriteSummariesQueued;
+    state.favoriteSummariesQueued = false;
     renderFavorites();
+    if (queued) loadFavoriteSummaries(true);
   }
 }
 
@@ -586,12 +607,13 @@ function renderFavorites() {
   if (count) count.textContent = String(state.favorites.length);
   if (!list) return;
   const ids = state.favorites.filter((id) => CITY_BY_ID[id]);
+  list.querySelectorAll('.favorite-skeleton').forEach((skeleton) => skeleton.remove());
   if (!ids.length) {
     if (!list.querySelector('.favorite-empty')) {
       list.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'favorite-empty';
-      empty.textContent = 'Noch keine Orte gespeichert. Suche nach einer deutschen Stadt und tippe auf den Stern.';
+      empty.textContent = 'Noch keine Orte gespeichert. Suche weltweit nach einem Ort und tippe auf den Stern.';
       list.append(empty);
     }
     return;
@@ -643,6 +665,9 @@ function renderFavorites() {
     }
     row.classList.toggle('is-active', id === state.selectedCityId);
     row.setAttribute('aria-current', id === state.selectedCityId ? 'true' : 'false');
+    if (list.children[index] !== row) {
+      list.insertBefore(row, list.children[index] ?? null);
+    }
   });
 }
 
@@ -679,7 +704,7 @@ function renderWeatherError(city, error) {
     <div class="error-card">
       <span class="error-card-icon">${icon('cloud', 18)}</span>
       <div class="error-card-copy">
-        <div class="error-card-title">Gerade kommt nichts vom DWD</div>
+        <div class="error-card-title">Gerade kommen keine Daten an</div>
         <div class="error-card-text">Für ${escapeHTML(city.name)} sind die Wetterdaten gerade nicht da. Prüfe kurz deine Verbindung – dann versuchen wir es noch mal.<br><code>${escapeHTML(usefulError(error))}</code></div>
         <div class="error-actions"><button class="action-button" type="button" data-retry-weather>${icon('refresh', 13)} Noch mal probieren</button></div>
       </div>
@@ -726,7 +751,7 @@ function renderWeather() {
   const low = formatTemp(today?.low, state.settings.tempUnit);
   const stale = model.stale;
   const updatedLabel = stale ? 'Offline-Daten' : `Aktualisiert ${formatUpdated(model.fetchedAt)}`;
-  const stationName = model.station?.station_name || model.station?.id || 'DWD-Messstation';
+  const stationName = model.station?.station_name || model.station?.id || 'Wetterstation';
   const observed = `${formatTime(model.observedAt)} Uhr`;
   const daylightProgress = Math.round(sunProgress(new Date(), sun.sunrise, sun.sunset) * 100);
   const isNight = daylightProgress <= 0 || daylightProgress >= 100;
@@ -746,6 +771,16 @@ function renderWeather() {
   const sunset = sun.sunset ? formatTime(sun.sunset) : '–';
   const dayLength = sun.dayMinutes > 0 ? formatDuration(sun.dayMinutes) : '–';
   const rainStart = model.rainOutlook.startsAt ? formatTime(model.rainOutlook.startsAt) : null;
+  const radarTeaser = providerForCity(city) === 'dwd' ? `
+    <button class="radar-teaser" type="button" data-open-radar>
+      <span class="radar-teaser-art"></span>
+      <span class="radar-teaser-copy">
+        <span class="radar-teaser-eyebrow">${icon('radar', 11)} DWD-Radar</span>
+        <h3>Regenradar</h3>
+        <p>${escapeHTML(rainStart ? `Die nächsten Tropfen erreichen ${city.name} gegen ${rainStart} Uhr.` : `Behalte Regen und Schnee über ${city.name} im animierten 90-Minuten-Radar im Blick.`)}</p>
+        <span class="radar-teaser-cta">Animierte Vorschau ${icon('arrowUpRight', 11)}</span>
+      </span>
+    </button>` : '';
   const currentHumidity = finite(current.humidity) ? Math.round(current.humidity) : null;
   const visibility = formatVisibilityLine(current.visibility);
   const pressure = model.pressure;
@@ -770,14 +805,14 @@ function renderWeather() {
     : '';
 
   const heroWarning = alerts.length
-    ? `<button class="pill hero-warning-chip" type="button" data-open-alerts>${icon('warning', 11)} ${alerts.length} ${alerts.length === 1 ? 'Warnung' : 'Warnungen'}</button>`
+    ? `<button class="pill hero-warning-chip" type="button" data-open-alerts>${icon('warning', 11)} ${alerts.length === 1 ? '1 Warnung' : `${alerts.length} Warnungen`}</button>`
     : '';
 
   const hero = `<article class="card hero-card" data-family="${weatherFamily}">
     <div class="hero-scene">${weatherArt(current.icon, model.nightNow)}</div>
     <div class="hero-content">
       <div class="hero-topline">
-        <span class="pill hero-live">${icon('sparkles', 11)} ${stale ? 'Offline-Daten' : 'DWD aktuell'}</span>
+        <span class="pill hero-live">${icon('sparkles', 11)} ${stale ? 'Offline-Daten' : `${providerLabel(city)} aktuell`}</span>
         <span class="hero-dateline">${escapeHTML(formatDateLong(model.observedAt))}</span>
         ${heroWarning}
         <span class="spacer"></span>
@@ -987,7 +1022,7 @@ function renderWeather() {
   const alertCard = `<article class="card alerts-card">
     <header class="card-head">
       <div class="card-heading">
-        <p class="kicker">${icon('bell', 11)} DWD-Warnlage</p>
+        <p class="kicker">${icon('bell', 11)} Warnlage</p>
         <h3 class="card-title">Amtliche Warnungen</h3>
       </div>
       ${alerts.length ? `<button class="card-link" type="button" data-open-alerts>Alle ${alerts.length} ${icon('chevronRight', 12)}</button>` : ''}
@@ -1016,15 +1051,7 @@ function renderWeather() {
       <p class="tip-text">${escapeHTML(tip.text)}</p>
     </article>
     ${alertCard}
-    <button class="radar-teaser" type="button" data-open-radar>
-      <span class="radar-teaser-art"></span>
-      <span class="radar-teaser-copy">
-        <span class="radar-teaser-eyebrow">${icon('radar', 11)} DWD-Radar</span>
-        <h3>Regenradar</h3>
-        <p>${escapeHTML(rainStart ? `Die nächsten Tropfen erreichen ${city.name} gegen ${rainStart} Uhr.` : `Behalte Regen und Schnee über ${city.name} im animierten 90-Minuten-Radar im Blick.`)}</p>
-        <span class="radar-teaser-cta">Animierte Vorschau ${icon('arrowUpRight', 11)}</span>
-      </span>
-    </button>
+    ${radarTeaser}
   </div>`;
 
   container.innerHTML = `${weatherToolbarMarkup(city)}
@@ -1106,15 +1133,15 @@ function openAlertsModal() {
       </article>`).join('')}</div>`
     : `<div class="alert-safe" style="padding:22px 4px">
         <span class="alert-safe-icon">${icon('info', 14)}</span>
-        <p><strong>Keine aktiven Warnungen</strong>${model.alertsAvailable ? 'Der Deutsche Wetterdienst meldet für diese Region derzeit keine amtliche Wetterwarnung.' : 'Die DWD-Warnlage konnte für diesen Ort nicht abgerufen werden.'}</p>
+        <p><strong>Keine aktiven Warnungen</strong>${model.alertsAvailable ? 'Der Deutsche Wetterdienst meldet für diese Region derzeit keine amtliche Wetterwarnung.' : 'Die Warnlage konnte für diesen Ort nicht abgerufen werden.'}</p>
       </div>`;
 
   showOverlay(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="alertsTitle">
     <div class="modal-head">
       <div class="modal-head-copy">
-        <div class="modal-kicker">DWD-Warnlage · ${escapeHTML(city.name)}</div>
+        <div class="modal-kicker">Warnlage · ${escapeHTML(city.name)}</div>
         <h2 class="modal-title" id="alertsTitle">${alerts.length ? `${alerts.length} amtliche ${alerts.length === 1 ? 'Warnung' : 'Warnungen'}` : 'Keine Warnungen'}</h2>
-        <p class="modal-subtitle">Direkt vom Deutschen Wetterdienst · Stand ${formatTime(model.fetchedAt)} Uhr</p>
+        <p class="modal-subtitle">Letzte Abfrage: ${formatTime(model.fetchedAt)} Uhr</p>
       </div>
       <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
     </div>
@@ -1402,14 +1429,14 @@ function openAboutModal() {
       <div class="modal-head-copy">
         <div class="modal-kicker">Brise · Über die App</div>
         <h2 class="modal-title" id="aboutTitle">Wetter, das sich richtig anfühlt.</h2>
-        <p class="modal-subtitle">Eine native Linux-App für den Deutschen Wetterdienst — ruhig, präzise und für Wayland gebaut.</p>
+        <p class="modal-subtitle">Eine native Linux-App für Wetter auf der ganzen Welt — ruhig, präzise und für Wayland gebaut.</p>
       </div>
       <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
     </div>
     <div class="modal-body">
       <div class="about-copy">
-        <p>Brise zeigt amtliche DWD-Beobachtungen und Vorhersagen für jede deutsche Stadt. Die Daten stammen direkt vom Deutschen Wetterdienst und werden über die offene Bright-Sky-Schnittstelle aufbereitet. Kein API-Schlüssel, kein Konto, kein Tracking.</p>
-        <p>Mit der Ortsuche lässt sich jeder Ort in Deutschland hinzufügen. Die Suche nutzt Open-Meteo Geocoding mit Daten von GeoNames; Wetter, Warnungen und Radar bleiben ausschließlich DWD-Daten.</p>
+        <p>Brise zeigt Beobachtungen und Vorhersagen aus offenen Quellen: für Deutschland vom Deutschen Wetterdienst über die offene Bright-Sky-Schnittstelle, für den Rest der Welt von Open-Meteo. Kein API-Schlüssel, kein Konto, kein Tracking.</p>
+        <p>Mit der Ortsuche lässt sich jeder Ort weltweit hinzufügen. Die Suche nutzt Open-Meteo Geocoding mit Daten von GeoNames; Wetter und Warnungen kommen je nach Ort von DWD oder Open-Meteo.</p>
         <p>Die Deutschlandkarte basiert auf Natural-Earth-Geometrien (gemeinfrei) und zeigt ausschließlich reale Messwerte der nächstgelegenen DWD-Stationen. Warnungen stammen aus der amtlichen DWD-Warnlage.</p>
       </div>
       <div class="about-links">
@@ -1665,7 +1692,7 @@ function openSearch(prefill = '') {
       <span class="shortcut"><kbd>↑</kbd><kbd>↓</kbd> Navigieren</span>
       <span class="shortcut"><kbd>↵</kbd> Öffnen</span>
       <span class="shortcut"><kbd>Strg K</kbd> Jederzeit</span>
-      <span style="margin-left:auto">DWD · offene Daten</span>
+      <span style="margin-left:auto">Open-Meteo · offene Daten</span>
     </div>
   </div>`, { focusSelector: '#searchInput' });
 
@@ -2201,12 +2228,12 @@ function renderRadarView() {
   if (!container) return;
   state.radarRenderer?.destroy();
   state.radarRenderer = null;
-  if (state.settings.country !== 'DE' || state.settings.provider !== 'dwd') {
-    container.innerHTML = `<div class="radar-error">${icon('mapPinned', 22)}<strong>Radar nur für Deutschland</strong><p>Der Regenradar kommt vom DWD und ist nur für Deutschland verfügbar – auch wenn du für Deutschland Open-Meteo gewählt hast.</p></div>`;
+  const city = currentCity();
+  if (providerForCity(city) !== 'dwd') {
+    container.innerHTML = `<div class="radar-error">${icon('mapPinned', 22)}<strong>Radar nur für Deutschland</strong><p>Der Regenradar kommt vom DWD und ist nur für Orte in Deutschland verfügbar.</p></div>`;
     state.radarData = null;
     return;
   }
-  const city = currentCity();
   container.innerHTML = radarShellMarkup(city);
   if (state.radarData && state.radarCityId === city.id) {
     requestAnimationFrame(() => mountRadarRenderer(city));
@@ -2214,12 +2241,12 @@ function renderRadarView() {
 }
 
 async function loadRadar(force = false) {
-  if (state.settings.country !== 'DE' || state.settings.provider !== 'dwd') {
+  const city = currentCity();
+  if (providerForCity(city) !== 'dwd') {
     state.radarLoading = false;
     renderRadarView();
     return;
   }
-  const city = currentCity();
   const cityChanged = state.radarCityId !== city.id;
   if (state.radarLoading && !cityChanged) return;
   const seq = ++state.radarSeq;
@@ -2677,7 +2704,11 @@ function switchView(view, options = {}) {
       renderWeather();
     }
     const entry = state.weather.get(city.id);
-    setPageLive(Boolean(entry?.bundle?.stale) || state.offline.has(city.id));
+    if (!entry && state.weatherLoading.has(city.id)) {
+      setLiveState('loading', 'Wetter lädt');
+    } else {
+      setPageLive(Boolean(entry?.bundle?.stale) || state.offline.has(city.id));
+    }
   } else if (view === 'radar') {
     const city = currentCity();
     const needsLoad = state.radarCityId !== city.id || !state.radarData || Date.now() - state.radarFetchedAt > 4 * 60 * 1000;
@@ -2699,6 +2730,7 @@ function selectCity(cityId, options = {}) {
   const changed = state.selectedCityId !== cityId;
   state.selectedCityId = cityId;
   persistSelectedCity();
+  updateProviderLabels();
   renderFavorites();
   if (options.navigate !== false) {
     if (state.view === 'weather' && changed) {
@@ -3002,7 +3034,7 @@ function bindEvents() {
   });
 
   window.addEventListener('online', () => {
-    showToast('Verbindung wieder da. Brise lädt frische DWD-Daten.', { icon: 'refresh' });
+    showToast('Verbindung wieder da. Brise lädt frische Wetterdaten.', { icon: 'refresh' });
     refreshAllData();
   });
 
