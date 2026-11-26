@@ -69,10 +69,10 @@ const ACCENT_IDS = new Set(ACCENT_OPTIONS.map(([id]) => id));
 
 const SEARCH_COMMANDS = [
   { id: 'radar', title: 'Regenradar öffnen', subtitle: 'Niederschlag und 90-Minuten-Prognose', icon: 'radar' },
-  { id: 'germany', title: 'Deutschlandkarte', subtitle: 'Wetter aller Regionen im direkten Vergleich', icon: 'map' },
+  { id: 'germany', title: 'Deutschlandkarte', subtitle: 'Wetter aller Regionen im direkten Vergleich', icon: 'mapPinned' },
   { id: 'refresh', title: 'Wetterdaten aktualisieren', subtitle: 'Neue DWD-Beobachtungen laden', icon: 'refresh' },
-  { id: 'settings', title: 'Einstellungen', subtitle: 'Darstellung, Einheiten und Aktualisierung', icon: 'settings' },
-  { id: 'shortcuts', title: 'Tastenkürzel', subtitle: 'Alle Abkürzungen für Brise', icon: 'command' },
+  { id: 'settings', title: 'Einstellungen', subtitle: 'Darstellung, Einheiten und Aktualisierung', icon: 'sliders' },
+  { id: 'shortcuts', title: 'Tastenkürzel', subtitle: 'Alle Abkürzungen für Brise', icon: 'keyboard' },
   { id: 'about', title: 'Über Brise', subtitle: 'Datenquellen und Hintergründe', icon: 'info' },
 ];
 
@@ -601,9 +601,9 @@ function renderWeatherError(city, error) {
     <div class="error-card">
       <span class="error-card-icon">${icon('cloud', 18)}</span>
       <div class="error-card-copy">
-        <div class="error-card-title">Der DWD antwortet gerade nicht</div>
-        <div class="error-card-text">Für ${escapeHTML(city.name)} konnten keine amtlichen Wetterdaten geladen werden. Prüfe deine Internetverbindung und versuche es erneut.<br><code>${escapeHTML(usefulError(error))}</code></div>
-        <div class="error-actions"><button class="action-button" type="button" data-retry-weather>${icon('refresh', 13)} Erneut versuchen</button></div>
+        <div class="error-card-title">Gerade kommt nichts vom DWD</div>
+        <div class="error-card-text">Für ${escapeHTML(city.name)} sind die Wetterdaten gerade nicht da. Prüfe kurz deine Verbindung – dann versuchen wir es noch mal.<br><code>${escapeHTML(usefulError(error))}</code></div>
+        <div class="error-actions"><button class="action-button" type="button" data-retry-weather>${icon('refresh', 13)} Noch mal probieren</button></div>
       </div>
     </div>`;
 }
@@ -743,7 +743,7 @@ function renderWeather() {
   const nowCard = `<aside class="card now-card">
     <header class="card-head">
       <div class="card-heading">
-        <p class="kicker">Aktuelle Messung</p>
+        <p class="kicker">Gerade gemessen</p>
         <h3 class="card-title">Jetzt</h3>
       </div>
       <span class="now-live"><i></i>${formatTime(model.observedAt)} Uhr</span>
@@ -760,11 +760,11 @@ function renderWeather() {
       </div>
     </div>
     <div class="now-metrics">
-      ${metricTile('droplet', 'Luftfeuchte', currentHumidity === null ? '–' : currentHumidity, '%', 'relative Feuchte', humidityBar, 'sky')}
+      ${metricTile('droplets', 'Luftfeuchtigkeit', currentHumidity === null ? '–' : currentHumidity, '%', 'Wie feucht die Luft ist', humidityBar, 'sky')}
       ${metricTile('gauge', 'Luftdruck', formatPressure(pressure.value), 'hPa', `Tendenz ${pressure.label}`)}
-      ${metricTile('eye', 'Sichtweite', visibility, '', 'amtliche Messstation')}
-      ${metricTile('thermometer', 'Taupunkt', dewPoint, '', 'Kondensationspunkt')}
-      ${metricTile('cloud', 'Bewölkung', cloudCover === null ? '–' : cloudCover, '%', 'Wolkenbedeckung', cloudBar, 'violet')}
+      ${metricTile('eye', 'Sichtweite', visibility, '', 'Von der Messstation')}
+      ${metricTile('thermometer', 'Taupunkt', dewPoint, '', 'Wann der Tau kommt')}
+      ${metricTile('cloud', 'Wolken', cloudCover === null ? '–' : cloudCover, '%', 'Wie viel vom Himmel bedeckt ist', cloudBar, 'violet')}
       ${metricTile('sun', 'Sonnenschein', finite(sunshineMinutes) ? formatDuration(sunshineMinutes) : '–', '', finite(today?.dayMinutes) ? `Tageslicht: ${formatDuration(today.dayMinutes)}` : 'seit Sonnenaufgang', sunshineBar, 'warm')}
     </div>
   </aside>`;
@@ -813,7 +813,7 @@ function renderWeather() {
   const trendCard = `<section class="card trend-card">
     <header class="card-head">
       <div class="card-heading">
-        <p class="kicker">Vorhersage</p>
+        <p class="kicker">${icon('calendar', 11)} Vorhersage</p>
         <h3 class="card-title">Temperatur & Regen</h3>
       </div>
       <div class="segmented" role="group" aria-label="Zeitraum wählen">
@@ -909,7 +909,7 @@ function renderWeather() {
   const alertCard = `<article class="card alerts-card">
     <header class="card-head">
       <div class="card-heading">
-        <p class="kicker">DWD-Warnlage</p>
+        <p class="kicker">${icon('bell', 11)} DWD-Warnlage</p>
         <h3 class="card-title">Amtliche Warnungen</h3>
       </div>
       ${alerts.length ? `<button class="card-link" type="button" data-open-alerts>Alle ${alerts.length} ${icon('chevronRight', 12)}</button>` : ''}
@@ -1116,7 +1116,7 @@ function openSettingsModal() {
       <div class="modal-head-copy">
         <div class="modal-kicker">Brise · Persönlich</div>
         <h2 class="modal-title" id="settingsTitle">Einstellungen</h2>
-        <p class="modal-subtitle">Darstellung, Einheiten und Aktualisierung gelten für alle Ansichten.</p>
+        <p class="modal-subtitle">Hier stellst du Brise so ein, wie es für dich am besten passt.</p>
       </div>
       <button class="modal-close" type="button" data-close aria-label="Schließen">${icon('x', 15)}</button>
     </div>
@@ -1124,7 +1124,7 @@ function openSettingsModal() {
       <div class="settings-section">
         <div class="settings-section-title">Darstellung</div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Farbwelt</div><div class="setting-hint">Dunkel, hell, warm oder kühl – die ganze Oberfläche wechselt mit.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Farbwelt</div><div class="setting-hint">Dunkel, hell, warm oder kühl – such einfach aus, was sich gut anfühlt.</div></div>
           <div class="setting-control">
             <select class="settings-select" data-setting="theme" aria-label="Farbwelt">
               ${settingsSelectOptions(THEME_OPTIONS, settings.theme)}
@@ -1132,7 +1132,7 @@ function openSettingsModal() {
           </div>
         </div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Akzentfarbe</div><div class="setting-hint">Färbt Hervorhebungen, Diagramme und die Glaslichter.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Akzentfarbe</div><div class="setting-hint">Ein bisschen Farbe für Highlights und Diagramme.</div></div>
           <div class="setting-control">
             <div class="accent-swatches" role="group" aria-label="Akzentfarbe">
               ${ACCENT_OPTIONS.map(([id, label]) => `<button type="button" class="accent-swatch accent-${id}${state.settings.accent === id ? ' is-active' : ''}" data-accent-setting="${id}" title="${label}" aria-label="${label}" aria-pressed="${state.settings.accent === id}"></button>`).join('')}
@@ -1140,7 +1140,7 @@ function openSettingsModal() {
           </div>
         </div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Bewegung & Animationen</div><div class="setting-hint">Animationen für Wetterbilder, Radar und Übergänge einschalten.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Bewegung</div><div class="setting-hint">Sanfte Animationen. Du kannst sie jederzeit ausmachen.</div></div>
           <button class="toggle" type="button" role="switch" aria-checked="${settings.animations}" aria-label="Animationen" data-toggle-setting="animations"></button>
         </div>
       </div>
@@ -1174,7 +1174,7 @@ function openSettingsModal() {
       <div class="settings-section">
         <div class="settings-section-title">Daten</div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Automatisch aktualisieren</div><div class="setting-hint">Brise lädt neue DWD-Beobachtungen im Hintergrund.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Automatisch aktualisieren</div><div class="setting-hint">Brise holt neue Messwerte, ohne dass du etwas tun musst.</div></div>
           <div class="setting-control">
             <select class="settings-select" data-setting="refreshMinutes" aria-label="Aktualisierungsintervall">
               ${settingsSelectOptions([['5', 'Alle 5 Minuten'], ['10', 'Alle 10 Minuten'], ['15', 'Alle 15 Minuten'], ['30', 'Alle 30 Minuten'], ['0', 'Nur manuell']], settings.refreshMinutes)}
@@ -1192,13 +1192,13 @@ function openSettingsModal() {
           <div class="shortcut-row"><span>Daten aktualisieren</span><kbd>Strg R</kbd></div>
         </div>
         <div class="settings-actions" style="margin-top:12px">
-          <button class="action-button" type="button" data-settings-action="shortcuts">${icon('command', 13)} Alle Tastenkürzel</button>
-          <button class="action-button" type="button" data-settings-action="reset-favorites">${icon('star', 13)} Favoriten zurücksetzen</button>
+          <button class="action-button" type="button" data-settings-action="shortcuts">${icon('keyboard', 13)} Tastenkürzel ansehen</button>
+          <button class="action-button" type="button" data-settings-action="reset-favorites">${icon('star', 13)} Favoriten löschen</button>
         </div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="action-button" type="button" data-settings-action="reset" style="margin-right:auto">${icon('refresh', 13)} Standard wiederherstellen</button>
+      <button class="action-button" type="button" data-settings-action="reset" style="margin-right:auto">${icon('refresh', 13)} Standardeinstellungen laden</button>
       <button class="action-button" type="button" data-close>Fertig</button>
       <button class="action-button primary" type="button" data-settings-action="refresh">${icon('refresh', 13)} Jetzt aktualisieren</button>
     </div>
@@ -1290,9 +1290,9 @@ function openAboutModal() {
         <p>Die Deutschlandkarte basiert auf Natural-Earth-Geometrien (gemeinfrei) und zeigt ausschließlich reale Messwerte der nächstgelegenen DWD-Stationen. Warnungen stammen aus der amtlichen DWD-Warnlage.</p>
       </div>
       <div class="about-links">
-        <div class="about-link">${icon('cloud', 14)}<strong>Datenquelle</strong><span>Deutscher Wetterdienst (offene Daten)</span></div>
+        <div class="about-link">${icon('shield', 14)}<strong>Datenquelle</strong><span>Deutscher Wetterdienst (offene Daten)</span></div>
         <div class="about-link">${icon('layers', 14)}<strong>Schnittstelle</strong><span>Bright Sky · api.brightsky.dev</span></div>
-        <div class="about-link">${icon('map', 14)}<strong>Karten</strong><span>Natural Earth · gemeinfrei</span></div>
+        <div class="about-link">${icon('mapPinned', 14)}<strong>Karten</strong><span>Natural Earth · gemeinfrei</span></div>
         <div class="about-link">${icon('pin', 14)}<strong>Ortsuche</strong><span>Open-Meteo Geocoding · GeoNames</span></div>
         <div class="about-link">${icon('radar', 14)}<strong>Radar</strong><span>DWD Radarverbund, 5-Minuten-Komposite</span></div>
       </div>
@@ -1732,7 +1732,7 @@ function onboardingSetStep(step) {
     dot.classList.toggle('is-active', Number(dot.dataset.onboardDot) <= step);
   });
   const label = $('#onboardProgressLabel', overlay);
-  if (label) label.textContent = step === 1 ? 'Begrüßung' : 'Dein Ort';
+  if (label) label.textContent = step === 1 ? 'Hallo' : 'Dein Ort';
   $('[data-onboard-skip]', overlay).hidden = step !== 1;
   $('[data-onboard-next]', overlay).hidden = step !== 1;
   $('[data-onboard-back]', overlay).hidden = step !== 2;
@@ -1760,14 +1760,14 @@ function openOnboarding() {
       <div class="onboarding-top-copy">
         <span class="onboarding-kicker">Willkommen bei Brise</span>
         <h1 class="onboarding-title">Dein Wetter, dein Ort.</h1>
-        <p class="onboarding-subtitle">In zwei kurzen Schritten ist Brise für dich bereit.</p>
+        <p class="onboarding-subtitle">Zwei kleine Schritte, dann kann’s losgehen.</p>
       </div>
     </div>
     <div class="onboarding-progress" aria-hidden="true">
       <span class="onboard-dot is-active" data-onboard-dot="1">1</span>
       <i></i>
       <span class="onboard-dot" data-onboard-dot="2">2</span>
-      <span class="onboarding-progress-label" id="onboardProgressLabel">Begrüßung</span>
+      <span class="onboarding-progress-label" id="onboardProgressLabel">Hallo</span>
     </div>
     <div class="onboarding-scroll">
       <section class="onboarding-step" data-onboard-step="1">
@@ -1782,7 +1782,7 @@ function openOnboarding() {
           </div>
           <div class="onboard-feature">
             <span class="onboard-feature-icon">${icon('settings', 17)}</span>
-            <span><strong>Deine Darstellung</strong><small>Wähle eine Farbwelt. Akzentfarben und weitere Optionen findest du später in den Einstellungen.</small></span>
+            <span><strong>Deine Darstellung</strong><small>Wähle, wie Brise für dich aussehen soll. Akzentfarben kommen später dazu.</small></span>
           </div>
         </div>
         <div class="onboard-theme">
@@ -1795,12 +1795,12 @@ function openOnboarding() {
         </div>
       </section>
       <section class="onboarding-step" data-onboard-step="2" hidden>
-        <label class="onboard-label" for="onboardInput">Welcher Ort soll dein Startort sein?</label>
+        <label class="onboard-label" for="onboardInput">Welcher Ort ist dein Startort?</label>
         <div class="onboard-search">
           ${icon('search', 18)}
           <input id="onboardInput" type="text" placeholder="Ort suchen, zum Beispiel Goslar …" autocomplete="off" spellcheck="false">
         </div>
-        <p class="onboard-hint">Deutschlandweit suchen – auch kleine Gemeinden und Stadtteile.</p>
+        <p class="onboard-hint">Ganz Deutschland – auch kleine Orte und Stadtteile.</p>
         <div class="onboard-results" id="onboardResults" role="listbox" aria-label="Orte"></div>
       </section>
     </div>
@@ -1881,7 +1881,7 @@ function radarShellMarkup(city) {
         </div>
         <div class="radar-toolbar">
           <button class="radar-play" id="radarPlay" type="button" aria-label="Radar abspielen" title="Wiedergabe starten oder anhalten">${icon('play', 14)}</button>
-          <button class="radar-now-button" id="radarNow" type="button">${icon('clock', 11)} Jetzt</button>
+          <button class="radar-now-button" id="radarNow" type="button">${icon('locate', 11)} Jetzt</button>
           <span class="radar-frame-label">
             <strong id="radarFrameTime">–:–</strong>
             <span class="radar-frame-badge" id="radarFrameBadge">Aktuell</span>
@@ -1902,7 +1902,7 @@ function radarShellMarkup(city) {
         </div>
         <div class="radar-attribution">DWD Radarverbund · via Bright Sky</div>
         ${loading ? `<div class="radar-loading"><span class="loader-orbit"></span><span>Radarkomposite werden geladen …</span></div>` : ''}
-        ${error ? `<div class="radar-error">${icon('warning', 22)}<strong>Radar nicht erreichbar</strong><p>${escapeHTML(usefulError(error))}</p><button class="action-button" type="button" data-radar-retry>${icon('refresh', 13)} Erneut versuchen</button></div>` : ''}
+        ${error ? `<div class="radar-error">${icon('warning', 22)}<strong>Radar ist gerade nicht erreichbar</strong><p>${escapeHTML(usefulError(error))}</p><button class="action-button" type="button" data-radar-retry>${icon('refresh', 13)} Noch mal probieren</button></div>` : ''}
       </div>
       <div class="radar-scrubber">
         <span class="radar-scrubber-time">${first ? formatTime(first.timestamp) : '–:–'}</span>
@@ -1921,7 +1921,7 @@ function radarShellMarkup(city) {
         <p class="rain-now-text">Die 5-Minuten-Komposite des DWD werden geladen.</p>
       </article>
       <article class="card radar-legend-card">
-        <h3 class="radar-legend-title">Intensität lesen</h3>
+        <h3 class="radar-legend-title">Was die Farben bedeuten</h3>
         ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${escapeHTML(entry.range)}</span></div>`).join('')}
       </article>
       <article class="card radar-source-card">
@@ -1963,7 +1963,7 @@ function renderRadarSide(renderer) {
       <div class="rain-timeline-labels"><span>${firstPoint ? formatTime(firstPoint.time) : '–:–'}</span><span>Jetzt</span><span>${lastPoint ? formatTime(lastPoint.time) : '+90 Min.'}</span></div>
     </article>
     <article class="card radar-legend-card">
-      <h3 class="radar-legend-title">Intensität lesen</h3>
+      <h3 class="radar-legend-title">Was die Farben bedeuten</h3>
       ${radarLegend().map((entry) => `<div class="radar-legend-row"><span class="radar-legend-swatch" style="background:${entry.color}"></span><span>${escapeHTML(entry.label)}</span><span>${escapeHTML(entry.range)}</span></div>`).join('')}
     </article>
     <article class="card radar-source-card">
@@ -2087,7 +2087,7 @@ async function loadRadar(force = false) {
     state.radarError = usefulError(error);
     state.radarStatus = 'error';
     renderRadarView();
-    setLiveState('error', 'Radar nicht erreichbar');
+    setLiveState('error', 'Radar ist gerade nicht erreichbar');
     console.warn('Brise: Radar konnte nicht geladen werden', error);
   } finally {
     if (seq === state.radarSeq) state.radarLoading = false;
@@ -2296,7 +2296,7 @@ function germanyMapMarkup() {
     </svg>
     <div class="map-tooltip" id="mapTooltip" hidden></div>
     ${state.germanyLoading && !MAP_CITY_IDS.some((id) => state.summaries.has(id)) ? `<div class="map-loading"><span class="loader-orbit"></span><span>Aktuelle Werte aus ${MAP_CITY_IDS.length} Städten werden geladen …</span></div>` : ''}
-    ${state.germanyError && !MAP_CITY_IDS.some((id) => state.summaries.has(id)) ? `<div class="map-loading" style="flex-direction:column;gap:9px;text-align:center"><strong style="color:var(--text-2);font-size:12px">Karte nicht erreichbar</strong><span style="max-width:330px">${escapeHTML(usefulError(state.germanyError))}</span><button class="action-button" type="button" data-germany-retry>${icon('refresh', 13)} Erneut versuchen</button></div>` : ''}
+    ${state.germanyError && !MAP_CITY_IDS.some((id) => state.summaries.has(id)) ? `<div class="map-loading" style="flex-direction:column;gap:9px;text-align:center"><strong style="color:var(--text-2);font-size:12px">Karte läuft gerade nicht</strong><span style="max-width:330px">${escapeHTML(usefulError(state.germanyError))}</span><button class="action-button" type="button" data-germany-retry>${icon('refresh', 13)} Noch mal probieren</button></div>` : ''}
   </div>`;
 }
 
@@ -2330,7 +2330,7 @@ function germanyRankingMarkup() {
       <span class="pill pill-muted">${MAP_CITY_IDS.length} Städte</span>
     </header>
     <div class="ranking-list">${rows}</div>
-    <div class="ranking-foot"><span>${icon('info', 11)} Aktuelle Messwerte der DWD-Stationen</span><span>${formatTime(state.germanyLoadedAt || Date.now())} Uhr</span></div>
+    <div class="ranking-foot"><span>${icon('shield', 11)} Frische Werte vom DWD</span><span>${formatTime(state.germanyLoadedAt || Date.now())} Uhr</span></div>
   </aside>`;
 }
 
@@ -2385,7 +2385,7 @@ function renderGermanyView() {
       <div class="map-legend">
         <div class="map-legend-range"></div>
         <div class="map-legend-copy"><span>${escapeHTML(metric.label)}</span><strong>${escapeHTML(legendLow)} — ${escapeHTML(legendHigh)}</strong></div>
-        <span class="map-legend-hint">Klicke auf eine Stadt für die volle Vorhersage</span>
+        <span class="map-legend-hint">Stadt anklicken für das komplette Wetter</span>
       </div>
     </section>
     ${germanyRankingMarkup()}
@@ -2448,7 +2448,7 @@ function showMapTooltip(cityId, x, y) {
   const wind = weather ? formatWind(weather.wind_speed_10, state.settings.windUnit, 0) : null;
   tooltip.innerHTML = `<div class="map-tooltip-title">${escapeHTML(city.name)} <span>${escapeHTML(city.state)}</span></div>
     <div class="map-tooltip-value">${escapeHTML(temp)} <small>${escapeHTML(condition)}</small></div>
-    <div class="map-tooltip-meta">${weather ? weatherIcon(summaryIconName(city, weather)) : ''}${wind ? `${icon('wind', 9)} ${escapeHTML(wind)}` : 'Keine Stationsdaten'}</div>`;
+    <div class="map-tooltip-meta">${weather ? weatherIcon(summaryIconName(city, weather)) : ''}${wind ? `${icon('wind', 9)} ${escapeHTML(wind)}` : 'Noch keine Werte da'}</div>`;
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
   tooltip.classList.toggle('is-below', below);
