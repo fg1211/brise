@@ -464,12 +464,25 @@ function setPageLive(stale) {
   else setLiveState('live', 'Daten aktuell');
 }
 
+let weatherAnimationTimer = 0;
+
+// Beim Ortswechsel und bei Hintergrund-Updates sollen die Eingangsanimationen
+// nicht erneut laufen – sonst flackert die Ansicht sichtbar.
+function suppressWeatherAnimations() {
+  document.documentElement.dataset.weatherSwitch = 'on';
+  window.clearTimeout(weatherAnimationTimer);
+  weatherAnimationTimer = window.setTimeout(() => {
+    delete document.documentElement.dataset.weatherSwitch;
+  }, 700);
+}
+
 
 async function loadWeather(cityId, options = {}) {
   const city = CITY_BY_ID[cityId];
   if (!city) return false;
   const force = Boolean(options.force);
   const quiet = Boolean(options.quiet);
+  const hadExisting = state.weather.has(cityId);
   const seq = (state.weatherSeq.get(cityId) || 0) + 1;
   state.weatherSeq.set(cityId, seq);
   state.weatherLoading.add(cityId);
@@ -494,6 +507,7 @@ async function loadWeather(cityId, options = {}) {
     state.weather.set(cityId, { bundle, at: Date.now() });
     cacheBundleSummary(city, bundle);
     if (state.view === 'weather' && state.selectedCityId === cityId) {
+      if (hadExisting) suppressWeatherAnimations();
       renderWeather();
       setPageLive(Boolean(bundle.stale));
     } else if (state.view === 'germany' && MAP_CITY_IDS.includes(cityId)) {
@@ -507,6 +521,7 @@ async function loadWeather(cityId, options = {}) {
       const existing = state.weather.get(cityId);
       if (existing) {
         state.offline.add(cityId);
+        suppressWeatherAnimations();
         renderWeather();
         setLiveState('stale', 'Offline-Daten');
         showToast('Keine Verbindung zum DWD. Brise zeigt die zuletzt geladenen Daten.', { tone: 'warn', icon: 'cloud' });
@@ -570,35 +585,65 @@ function renderFavorites() {
   const count = $('#favoriteCount');
   if (count) count.textContent = String(state.favorites.length);
   if (!list) return;
-  if (!state.favorites.length) {
-    list.innerHTML = `<div class="favorite-empty">Noch keine Orte gespeichert. Suche nach einer deutschen Stadt und tippe auf den Stern.</div>`;
+  const ids = state.favorites.filter((id) => CITY_BY_ID[id]);
+  if (!ids.length) {
+    if (!list.querySelector('.favorite-empty')) {
+      list.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'favorite-empty';
+      empty.textContent = 'Noch keine Orte gespeichert. Suche nach einer deutschen Stadt und tippe auf den Stern.';
+      list.append(empty);
+    }
     return;
   }
-  list.innerHTML = state.favorites
-    .map((id) => {
-      const city = CITY_BY_ID[id];
-      if (!city) return '';
-      const weather = summaryWeather(id);
-      const rawTemp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '–';
-      const weatherIconMarkup = weather
-        ? weatherIcon(summaryIconName(city, weather))
-        : icon('pin', 16);
-      const stateText = weather
-        ? `${summaryLabel(city, weather)}`
-        : (summaryFor(id)?.error ? 'Nicht erreichbar' : 'Wird geladen …');
-      return `<div class="favorite-row ${id === state.selectedCityId ? 'is-active' : ''}" data-favorite-city="${id}" role="button" tabindex="0" aria-label="${escapeHTML(city.name)}, ${escapeHTML(rawTemp)}" aria-current="${id === state.selectedCityId ? 'true' : 'false'}">
-        <span class="favorite-row-main">
-          <span class="favorite-icon">${weatherIconMarkup}</span>
-          <span class="favorite-copy">
-            <span class="favorite-name">${escapeHTML(city.name)}</span>
-            <span class="favorite-state">${escapeHTML(stateText)}</span>
-          </span>
+  list.querySelector('.favorite-empty')?.remove();
+
+  // Zeilen bleiben erhalten und werden nur bei geänderten Daten aktualisiert.
+  // So startet die Eingangsanimation nicht bei jedem Wetter-Update erneut.
+  const rows = new Map(
+    [...list.querySelectorAll('[data-favorite-city]')].map((row) => [row.dataset.favoriteCity, row]),
+  );
+  for (const [id, row] of rows) {
+    if (!ids.includes(id)) row.remove();
+  }
+
+  ids.forEach((id, index) => {
+    const city = CITY_BY_ID[id];
+    const weather = summaryWeather(id);
+    const rawTemp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '–';
+    const weatherIconMarkup = weather
+      ? weatherIcon(summaryIconName(city, weather))
+      : icon('pin', 16);
+    const stateText = weather
+      ? summaryLabel(city, weather)
+      : (summaryFor(id)?.error ? 'Nicht erreichbar' : 'Wird geladen …');
+    const signature = `${city.name}|${stateText}|${rawTemp}|${weather ? 'w' : '-'}`;
+
+    let row = rows.get(id);
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'favorite-row';
+      row.dataset.favoriteCity = id;
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      list.insertBefore(row, list.children[index] ?? null);
+    }
+    if (row.dataset.signature !== signature) {
+      row.innerHTML = `<span class="favorite-row-main">
+        <span class="favorite-icon">${weatherIconMarkup}</span>
+        <span class="favorite-copy">
+          <span class="favorite-name">${escapeHTML(city.name)}</span>
+          <span class="favorite-state">${escapeHTML(stateText)}</span>
         </span>
-        <span class="favorite-temp">${escapeHTML(rawTemp)}</span>
-        <button class="favorite-remove" type="button" data-remove-favorite="${id}" title="${escapeHTML(city.name)} entfernen" aria-label="${escapeHTML(city.name)} aus Favoriten entfernen">${icon('x', 11)}</button>
-      </div>`;
-    })
-    .join('');
+      </span>
+      <span class="favorite-temp">${escapeHTML(rawTemp)}</span>
+      <button class="favorite-remove" type="button" data-remove-favorite="${id}" title="${escapeHTML(city.name)} entfernen" aria-label="${escapeHTML(city.name)} aus Favoriten entfernen">${icon('x', 11)}</button>`;
+      row.dataset.signature = signature;
+      row.setAttribute('aria-label', `${city.name}, ${rawTemp}`);
+    }
+    row.classList.toggle('is-active', id === state.selectedCityId);
+    row.setAttribute('aria-current', id === state.selectedCityId ? 'true' : 'false');
+  });
 }
 
 function weatherToolbarMarkup(city) {
@@ -2659,9 +2704,15 @@ function selectCity(cityId, options = {}) {
     if (state.view === 'weather' && changed) {
       const existing = state.weather.get(cityId);
       if (existing) {
+        // Frische Daten werden nicht noch einmal vom Server geholt. Das verhindert
+        // beim Wechsel zwischen Favoriten Ladebalken und kurzes Hängen.
+        const minutes = Number(state.settings.refreshMinutes);
+        const maxAge = (minutes > 0 ? minutes : 10) * 60 * 1000;
+        const fresh = Date.now() - existing.at < maxAge && !state.offline.has(cityId);
+        suppressWeatherAnimations();
         renderWeather();
-        setPageLive(Boolean(existing.bundle?.stale));
-        loadWeather(cityId);
+        setPageLive(Boolean(existing.bundle?.stale) || state.offline.has(cityId));
+        if (!fresh) loadWeather(cityId);
       } else {
         renderWeatherLoading(city);
         loadWeather(cityId);
