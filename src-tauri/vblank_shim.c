@@ -36,12 +36,13 @@ static uint64_t monotonic_ns(void) {
 }
 
 static unsigned int refresh_hz(void) {
+  static int initialized = 0;
   static unsigned int hz = 0;
-  if (hz == 0) {
+  if (!initialized) {
+    initialized = 1;
     const char *value = getenv("BRISE_REFRESH_HZ");
     long parsed = value ? strtol(value, NULL, 10) : 0;
-    if (parsed < 30 || parsed > 360) parsed = 180;
-    hz = (unsigned int)parsed;
+    if (parsed >= 30 && parsed <= 360) hz = (unsigned int)parsed;
   }
   return hz;
 }
@@ -60,7 +61,10 @@ int drmWaitVBlank(int fd, drmVBlankPtr vbl) {
 
   if (debug < 0) debug = getenv("BRISE_VBLANK_DEBUG") != NULL;
 
-  const uint64_t period = 1000000000ULL / refresh_hz();
+  const unsigned int hz = refresh_hz();
+  if (hz == 0) return rc;
+
+  const uint64_t period = 1000000000ULL / hz;
   const uint64_t now = monotonic_ns();
   const uint64_t next = ((now / period) + 1) * period;
   struct timespec target = {
@@ -83,7 +87,7 @@ int drmWaitVBlank(int fd, drmVBlankPtr vbl) {
   if (debug) {
     fprintf(stderr, "BRISE-VBLANK fd=%d type=0x%x seq=%u hz=%u driver=%d\n",
             fd, vbl ? (unsigned int)vbl->request.type : 0u,
-            vbl ? vbl->reply.sequence : 0u, refresh_hz(), rc);
+            vbl ? vbl->reply.sequence : 0u, hz, rc);
   }
   return 0;
 }
