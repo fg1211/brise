@@ -9,6 +9,7 @@ Brise verwendet folgende Daten und Software von Dritten:
 | Grenzverlauf Deutschland / Bundesländer | [Natural Earth](https://www.naturalearthdata.com/) | Gemeinfrei (Public Domain) |
 | Schrift „Inter“ | [Inter](https://rsms.me/inter/) | SIL Open Font License 1.1 |
 | Schrift „Space Grotesk“ | [Space Grotesk](https://floriankarsten.com/space-grotesk/) | SIL Open Font License 1.1 |
+| Symbole in der Oberfläche | [Lucide](https://lucide.dev/), lokal unter `ui/icons/` | ISC-Lizenz |
 | Rust-/Tauri-Abhängigkeiten | siehe `src-tauri/Cargo.lock` | jeweilige Open-Source-Lizenzen |
 
 Brise ist ein unabhängiges Projekt und ist nicht mit dem Deutschen Wetterdienst
