@@ -81,20 +81,26 @@ function loadCustomCities() {
   try {
     const stored = JSON.parse(localStorage.getItem(CUSTOM_CITIES_KEY) || '[]');
     if (!Array.isArray(stored)) return [];
-    const valid = stored.filter((city) => (
-      city
-      && typeof city.id === 'string'
+    const normalized = stored
+      .filter((city) => city && typeof city === 'object')
+      .map((city) => ({ ...city, country: String(city.country || 'DE').toUpperCase() }));
+    const valid = normalized.filter((city) => (
+      typeof city.id === 'string'
       && city.id.startsWith('ort-')
       && typeof city.name === 'string'
+      && city.name.trim().length > 0
       && Number.isFinite(city.lat)
       && Number.isFinite(city.lon)
+      && city.lat >= -90 && city.lat <= 90
+      && city.lon >= -180 && city.lon <= 180
+      && /^[A-Z]{2}$/.test(city.country)
     ));
     const unique = new Map(valid.map((city) => [city.id, city]));
     return [...unique.values()].map((city) => ({
       id: city.id,
       name: city.name,
       state: typeof city.state === 'string' ? city.state : 'Deutschland',
-      country: typeof city.country === 'string' ? city.country.toUpperCase() : 'DE',
+      country: city.country,
       lat: city.lat,
       lon: city.lon,
       custom: true,
