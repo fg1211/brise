@@ -323,7 +323,7 @@ fn open_meteo_timestamp(value: Option<&str>, offset_seconds: i64) -> Value {
         .or_else(|_| NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S"))
         .ok();
     match parsed {
-        Some(naive) => json!(naive.and_utc().timestamp() - offset_seconds),
+        Some(naive) => json!(naive.and_utc().timestamp_millis() - offset_seconds * 1000),
         None => Value::Null,
     }
 }
@@ -352,7 +352,7 @@ fn open_meteo_condition(code: i64, is_day: bool) -> (&'static str, &'static str)
 /// Feldnamen. Wir formen sie hier in das vorhandene Brise-Format um, damit
 /// Oberfläche und Cache unverändert bleiben.
 async fn fetch_open_meteo_bundle(city: &CityRequest) -> Result<Value, String> {
-    let current_fields = "temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day";
+    let current_fields = "temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,sunshine_duration,shortwave_radiation,is_day";
     let hourly_fields = "temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,precipitation_probability,weather_code,cloud_cover,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,sunshine_duration,shortwave_radiation,is_day";
     let response = get_json_url(
         OPEN_METEO,
@@ -399,6 +399,12 @@ async fn fetch_open_meteo_bundle(city: &CityRequest) -> Result<Value, String> {
         "pressure_msl": json_number(&current_raw, "pressure_msl"),
         "visibility": json_number(&current_raw, "visibility"),
         "precipitation_60": json_number(&current_raw, "precipitation"),
+        // Open-Meteo liefert Sonnenschein in Sekunden, Brise rechnet in Minuten.
+        "sunshine_60": json!(current_raw
+            .get("sunshine_duration")
+            .and_then(Value::as_f64)
+            .map(|value| value / 60.0)),
+        "solar_60": json_number(&current_raw, "shortwave_radiation"),
     });
 
     let hourly_raw = response.get("hourly").cloned().unwrap_or(Value::Null);
