@@ -36,6 +36,25 @@ fi
 
 MONITOR="${BRISE_MONITOR:-${target:-}}"
 
+# Die echte Monitorfrequenz benötigt der Vblank-Shim, damit WebKit auf 180-Hz-
+# Displays nicht auf den 60-Hz-Timer zurückfällt. Immer Aufrunden auf Hz.
+if [ -n "$MONITOR" ] && command -v hyprctl >/dev/null 2>&1; then
+  refresh="$(hyprctl monitors -j 2>/dev/null | jq -r --arg m "$MONITOR" \
+    '[.[] | select(.name == $m) | .refreshRate] | first // empty' 2>/dev/null || true)"
+  if [ -z "$refresh" ] || [ "$refresh" = null ]; then
+    refresh="$(hyprctl monitors 2>/dev/null | awk -v m="$MONITOR" '
+      /^Monitor / { name = $2 }
+      /^[[:space:]]*[0-9]+x[0-9]+@/ {
+        split($1, mode, "@")
+        if (name == m) { print mode[2]; exit }
+      }' 2>/dev/null || true)"
+  fi
+  case "$refresh" in
+    ''|*[!0-9.]*) ;;
+    *) BRISE_REFRESH_HZ="$(printf '%.0f' "$refresh")"; export BRISE_REFRESH_HZ ;;
+  esac
+fi
+
 # Die Regel wird vor dem Start registriert, damit das Fenster nicht kurz
 # auf dem falschen Monitor auftaucht. Alte Regeln früherer Versionen
 # deaktivieren wir zuerst, damit sich die Effekte nicht überlagern.
@@ -59,10 +78,27 @@ if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; the
   export GDK_BACKEND=wayland
 fi
 
+# GTK3s GL-Pfad holt keine Wayland-Frame-Callbacks und läuft deshalb mit
+# festen 60 Hz. Ohne GL folgt der Frame-Clock dem echten Monitor-Takt;
+# WebKit komponiert dabei weiterhin über den eigenen GPU/DMABUF-Pfad.
+export GDK_GL="${BRISE_GDK_GL:-disable}"
+
+# NVIDIA liefert drmWaitVBlank EOPNOTSUPP. Der Shim ersetzt genau diesen
+# Fehler durch einen echten Vblank mit BRISE_REFRESH_HZ; auf Treibern, die
+# Vblank selbst können, verändert er nichts.
+shim="${BRISE_VBLANK_LIB:-$here/libbrise-vblank.so}"
+if [ ! -f "$shim" ] && [ -f /usr/lib/brise/libbrise-vblank.so ]; then
+  shim=/usr/lib/brise/libbrise-vblank.so
+fi
+if [ -f "$shim" ]; then
+  export LD_PRELOAD="$shim${LD_PRELOAD:+:$LD_PRELOAD}"
+else
+  echo "Hinweis: Vblank-Shim fehlt – hohes Scroll-Tempo ist nicht verfügbar." >&2
+fi
+
 # Keine künstlichen Frame-Limits und kein erzwungenes Timer-Vblank: WebKit
 # soll sich am Vblank des Monitors ausrichten. Der NVIDIA-Sync-Flag wird
-# bewusst entfernt: Er erzeugt auf dem 180-Hz-Monitor sichtbares Ruckeln,
-# während WebKit ohne ihn flüssig scrollt.
+# bewusst entfernt: Er erzeugt auf dem 180-Hz-Monitor sichtbares Ruckeln.
 unset WEBKIT_DISPLAY_REFRESH_THROTTLE_FPS
 unset WEBKIT_FORCE_VBLANK_TIMER
 unset WEBKIT_DISABLE_COMPOSITING_MODE
