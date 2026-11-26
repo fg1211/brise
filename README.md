@@ -4,142 +4,148 @@
 
 # Brise
 
-**Wetter für Deutschland — mit echten DWD-Daten.**
+**Weather wherever you are — with real, free data.**
 
-Eine moderne, schnelle Wetter-App für den Linux-Desktop. Kein API-Key, kein Konto, kein Tracking und keine erfundenen Funktionen.
+A modern, fast weather app for the Linux desktop. No API key, no account, no tracking and no made-up features.
+
+[🇩🇪 Deutsche Fassung](README.de.md)
 
 ![Linux](https://img.shields.io/badge/Linux-x86__64-7d7d7d?style=flat-square&logo=linux&logoColor=white)
-![Wayland](https://img.shields.io/badge/Wayland-optimiert-7d7d7d?style=flat-square)
+![Wayland](https://img.shields.io/badge/Wayland-optimized-7d7d7d?style=flat-square)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24c8b8?style=flat-square)
-![Rust](https://img.shields.io/badge/Rust-Backend-dea584?style=flat-square)
-![Lizenz](https://img.shields.io/badge/Lizenz-MIT-4c9118?style=flat-square)
+![Rust](https://img.shields.io/badge/Rust-backend-dea584?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-4c9118?style=flat-square)
 
 </div>
 
-## Über Brise
+## About Brise
 
-Brise zeigt amtliche Beobachtungen und Vorhersagen des **Deutschen Wetterdienstes**, aufbereitet über die offene Bright-Sky-Schnittstelle. Das Backend ist in Rust geschrieben, die Oberfläche läuft in WebKitGTK — dadurch bleibt die App leicht, schnell und auf Wayland scharf.
+Brise shows observations and forecasts from the **German Weather Service (DWD)** via the open Bright Sky API, and weather for the rest of the world from the free **Open-Meteo** API. For Germany you can choose your provider yourself. The backend is written in Rust and the interface runs in WebKitGTK — light, fast and sharp on Wayland.
 
-Die Ortsuche findet **jeden Ort in Deutschland**, auch kleine Gemeinden und Stadtteile. Gefundene Orte werden dauerhaft gespeichert und lassen sich als Favoriten anlegen.
+The place search finds **any town in the selected country**, including small municipalities and districts. Found places are saved permanently and can be added to your favourites. The interface speaks German, English and Dutch — independently of the country you are looking at.
 
-## Funktionen
+## Features
 
-- **Aktuelles Wetter** für jeden deutschen Ort: Temperatur, Gefühlt wie, Wind, Niederschlag, Luftfeuchte, Luftdruck und Sichtweite.
-- **Stunden- und Tagesvorhersage** mit echten Messwerten und übersichtlichen Diagrammen.
-- **Sonne & Mond**: Sonnenstand, Tageslicht und eine grafische Mondphase mit Beleuchtungsgrad; nachts mit Sternenhimmel.
-- **Amtliche Warnungen** mit Gültigkeitszeitraum, Schweregrad und Handlungshinweisen.
-- **Regenradar** mit 31 animierten DWD-Radarbildern, Zeitsteuerung und 90-Minuten-Prognose.
-- **Deutschlandkarte** mit Städtevergleich, Ranking und echten Bundesländergrenzen.
-- **Einrichtung beim ersten Start**: Darstellung wählen und den eigenen Startort aus ganz Deutschland suchen.
-- **Suche & Favoriten**, persistente Einstellungen, Einheiten, fünf Farbwelten (*Mitternacht*, *Tageslicht*, *Abendrot*, *Ozean*, *Nordwald*) und sechs Akzentfarben.
-- **Überarbeitete Oberfläche**: mehr Icons, menschlichere Texte und ruhige Animationen – weiterhin flüssig beim Scrollen.
-- **Offline-Fallback**: zuletzt geladene Daten bleiben mit klar gekennzeichnetem Cache-Status nutzbar.
-- **Skaliert mit der Arbeitsfläche**: auch als kleines, geteiltes Fenster auf Hyprland bleibt die Oberfläche übersichtlich.
-- **Wayland-optimiert**: native GTK/Wayland-Darstellung, eigene Fensterdekoration und ein Launcher für Hyprland.
+- **Current weather** for any place: temperature, feels like, wind, precipitation, humidity, pressure and visibility.
+- **Hourly and daily forecasts** with real measurements and clear charts.
+- **Sun & moon**: sun position, daylight and a graphical moon phase with illumination; stars at night.
+- **Official warnings** with validity, severity and advice (DWD, Germany).
+- **Rain radar** with 31 animated DWD radar images, a timeline and a 90-minute forecast (Germany with DWD).
+- **Map of Germany** with city comparison, rankings and real state borders.
+- **First-run setup**: pick your look, language, country and home place.
+- **Search & favourites**, persistent settings, units, five colour themes (*Midnight*, *Daylight*, *Afterglow*, *Ocean*, *Northern Forest*) and six accent colours.
+- **Modern interface**: more local icons, human wording and calm animations — still smooth while scrolling.
+- **Graphics controls**: hardware acceleration and VSync can be switched in the settings.
+- **Offline fallback**: the last loaded data stays usable with a clearly marked cache status.
+- **Scales with your workspace**: stays readable as a small tiled window on Hyprland.
+- **Wayland optimized**: native GTK/Wayland rendering, custom window decorations and a launcher for Hyprland.
 
 ## Installation
 
-### Schnell und ohne sudo
+### Quick, without sudo
 
-Das Repository enthält ein vorgebautes Linux-Binary in `dist/`:
+The repository contains a prebuilt Linux binary in `dist/`:
 
 ```bash
 git clone https://github.com/fg1211/brise.git
 cd brise
-./install.sh                 # nach ~/.local
+./install.sh                 # installs into ~/.local
 ```
 
-Das installiert `brise`, `brise-launch`, die Desktop-Datei und die Icons. Danach ist Brise im Anwendungsmenü verfügbar oder direkt startbar:
+This installs `brise`, `brise-launch`, the desktop file and the icons. Brise then appears in your application menu, or you can start it directly:
 
 ```bash
 brise-launch
 ```
 
-### Weitere Installationsziele
+### Other install targets
 
 ```bash
-./install.sh /usr/local             # systemweit (root nötig)
-PREFIX=/opt/brise ./install.sh      # eigener Pfad
+./install.sh /usr/local             # system-wide (needs root)
+PREFIX=/opt/brise ./install.sh      # custom prefix
 ```
 
-Falls kein vorgebautes Binary vorhanden ist, baut `install.sh` automatisch aus dem Quellcode.
+If no prebuilt binary is present, `install.sh` builds from source automatically.
 
-### Portable Variante
+### Portable archive
 
 ```bash
-tar -xzf dist/brise-1.0.8-x86_64.tar.gz
+tar -xzf dist/brise-1.1.0-x86_64.tar.gz
 cd dist && ./install.sh
 ```
 
 ### Arch Linux
 
-Mit yay:
+With yay:
 
 ```bash
 yay -S brise
 ```
 
-Das Paket baut Brise aus den Quellen von `v1.0.8` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
+The package builds Brise from the `v1.1.0` sources and installs the binary, launcher, desktop file and icons into `/usr`. The launcher opens the window tiled on the monitor under the mouse pointer; `BRISE_MONITOR=DP-4 brise-launch` forces another monitor.
 
-Noch nicht im AUR? Unter [`aur/PKGBUILD`](aur/PKGBUILD) liegt ein Paketrezept – damit baut `makepkg -si` Brise selbst.
+Not in the AUR yet? A package recipe is available in [`aur/PKGBUILD`](aur/PKGBUILD) — `makepkg -si` builds Brise from source.
 
-### Aus dem Quellcode bauen
+### Building from source
 
-Voraussetzungen: Linux x86_64, Rust ≥ 1.82, GTK3 und WebKit2GTK 4.1.
+Requirements: Linux x86_64, Rust ≥ 1.82, GTK3 and WebKit2GTK 4.1.
 
 ```bash
-./scripts/build.sh                  # Release-Binary + portables Archiv
-# oder nur das Binary:
+./scripts/build.sh                  # release binary + portable archive
+# or just the binary:
 cd src-tauri && cargo build --release
 ```
 
-## Bedienung
+## Usage
 
-| Taste | Aktion |
+| Key | Action |
 | --- | --- |
-| `Strg` + `K` | Suche nach Orten und Befehlen öffnen |
-| `Strg` + `,` | Einstellungen öffnen |
-| `Strg` + `R` | Wetterdaten neu laden |
-| `1` / `2` / `3` | Wetter / Radar / Deutschlandkarte |
-| `Esc` | Dialog schließen |
+| `Ctrl` + `K` | Open search for places and commands |
+| `Ctrl` + `,` | Open settings |
+| `Ctrl` + `R` | Reload weather data |
+| `1` / `2` / `3` | Weather / radar / map of Germany |
+| `Esc` | Close dialog |
 
-In der Suche lassen sich deutsche Orte beliebig eingeben — auch Orte, die nicht in der mitgelieferten Städteauswahl sind. Mit dem Stern neben einem Treffer wird er dauerhaft zu den Favoriten hinzugefügt.
+In the settings you choose the search country, the interface language (German, English or Dutch) and — for Germany — whether weather comes from DWD or Open-Meteo. All other countries use Open-Meteo. Radar and official warnings remain DWD-only.
 
-## Monitor-Verhalten auf Hyprland
+In search you can enter any place in the selected country, even places outside the built-in city list. The star next to a result saves it permanently as a favourite.
 
-`brise-launch` registriert vor dem Start eine Fensterregel, die das Fenster **geteilt (`tile=true`) auf dem Monitor unter dem Mauszeiger** öffnet. Die genaue Position innerhalb des Layouts bestimmt Hyprland. Ein Monitor kann auch ausdrücklich vorgegeben werden:
+## Monitor behaviour on Hyprland
+
+`brise-launch` registers a window rule before starting, so the window opens **tiled (`tile=true`) on the monitor under the mouse pointer**. Hyprland decides the exact position in your layout. You can also force a monitor:
 
 ```bash
 BRISE_MONITOR=DP-1 brise-launch
 ```
 
-Unter X11 positioniert die App sich selbst; auf anderen Wayland-Compositoren entscheidet der Compositor.
+On X11 the app positions itself; on other Wayland compositors the compositor decides.
 
-## Projektstruktur
+## Project structure
 
 ```text
 .
-├── install.sh              # Installation ohne sudo
+├── install.sh              # installation without sudo
 ├── scripts/
-│   ├── build.sh            # Release-Build + portables Archiv
-│   └── generate_geo.py     # Deutschland-Geometrie aus Natural Earth
-├── src-tauri/              # Rust-Backend, Tauri-Konfiguration, Icons
-└── ui/                     # HTML, CSS, JavaScript, Schriften
+│   ├── build.sh            # release build + portable archive
+│   └── generate_geo.py     # Germany geometry from Natural Earth
+├── src-tauri/              # Rust backend, Tauri configuration, icons
+└── ui/                     # HTML, CSS, JavaScript, fonts
 ```
 
-## Datenquellen & Danksagungen
+## Data sources & credits
 
-- **Deutscher Wetterdienst (DWD)** — Open Data, vermittelt über [Bright Sky](https://api.brightsky.dev/) (keine Registrierung nötig).
-- **Open-Meteo Geocoding** mit **GeoNames** — Namensauflösung für die Ortsuche; Wetter, Warnungen und Radar bleiben ausschließlich DWD-Daten.
-- **Natural Earth** — Geodaten für die Deutschlandkarte (gemeinfrei).
-- **Inter** und **Space Grotesk** — Schriften unter SIL Open Font License.
+- **German Weather Service (DWD)** — open data via [Bright Sky](https://api.brightsky.dev/) (no registration required).
+- **Open-Meteo** — free weather forecasts without an API key or account, for Germany (optional) and all other countries.
+- **Open-Meteo Geocoding** with **GeoNames** — place lookup for any country.
+- **Natural Earth** — map data for Germany (public domain).
+- **Inter** and **Space Grotesk** — fonts under the SIL Open Font License.
 
-Brise ist ein unabhängiges Projekt und ist **nicht** mit dem Deutschen Wetterdienst verbunden. Details zu Lizenzen und Namensnennungen stehen in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Brise is an independent project and is **not** affiliated with the German Weather Service. License details and attributions are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Mitmachen
+## Contributing
 
-Issues und Pull Requests sind willkommen. Für Änderungen am Backend `cargo check` in `src-tauri/` ausführen; für die Oberfläche genügt ein Bearbeiten der Dateien in `ui/`. Ein kompletter Build läuft mit `./scripts/build.sh`.
+Issues and pull requests are welcome. For backend changes run `cargo check` in `src-tauri/`; for the interface just edit the files in `ui/`. A full build runs with `./scripts/build.sh`.
 
-## Lizenz
+## License
 
-Brise steht unter der [MIT-Lizenz](LICENSE).
+Brise is licensed under the [MIT License](LICENSE).
