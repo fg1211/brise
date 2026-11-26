@@ -11,9 +11,9 @@ makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gtk3' 'webkit2gtk-4.1' 'librsvg' 'l
 optdepends=('hyprland: tile the window on the monitor under the cursor')
 # LTO bricht die Assembly-Objekte der TLS-Bibliothek ring beim Linken.
 options=('!lto')
-_commit=cb75561d7a4ca84f20fa870f3490d2c0e3a3eb3c
+_commit=ae5705a7b6ed7136e044a5fd253a1fdf2cc9ab53
 source=("$pkgname-$_commit.tar.gz::https://github.com/fg1211/brise/archive/$_commit.tar.gz")
-sha256sums=('48d3a8b9617b1dcd81a187f36d565e108f66c9033b98fade97a4175786c6d8a6')
+sha256sums=('4df2f6f42a08f22d30763e5cb9b1bebf32a28f97cc1a27530e1d07fc35c419ef')
 
 build() {
   cd "$srcdir/$pkgname-$_commit/src-tauri"
