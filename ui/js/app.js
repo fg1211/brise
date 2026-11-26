@@ -524,15 +524,17 @@ async function loadWeather(cityId, options = {}) {
     if (!quiet) console.warn('Brise: Wetter konnte nicht geladen werden', error);
     return false;
   } finally {
-    state.weatherLoading.delete(cityId);
-    $('#refreshWeather')?.classList.remove('is-loading');
-    if (state.view === 'weather' && state.selectedCityId === cityId && state.weather.has(cityId)) {
-      const indicator = $('#weatherUpdated');
-      if (indicator) {
-        const entry = state.weather.get(cityId);
-        indicator.textContent = state.offline.has(cityId) || entry?.bundle?.stale
-          ? 'Offline-Daten'
-          : `Aktualisiert ${formatRelative(new Date(entry?.bundle?.fetched_at ? entry.bundle.fetched_at * 1000 : entry?.at || Date.now()))}`;
+    if (state.weatherSeq.get(cityId) === seq) {
+      state.weatherLoading.delete(cityId);
+      $('#refreshWeather')?.classList.remove('is-loading');
+      if (state.view === 'weather' && state.selectedCityId === cityId && state.weather.has(cityId)) {
+        const indicator = $('#weatherUpdated');
+        if (indicator) {
+          const entry = state.weather.get(cityId);
+          indicator.textContent = state.offline.has(cityId) || entry?.bundle?.stale
+            ? 'Offline-Daten'
+            : `Aktualisiert ${formatRelative(new Date(entry?.bundle?.fetched_at ? entry.bundle.fetched_at * 1000 : entry?.at || Date.now()))}`;
+        }
       }
     }
   }
@@ -2144,6 +2146,8 @@ function mountRadarRenderer(city) {
 function renderRadarView() {
   const container = $('#radarContent');
   if (!container) return;
+  state.radarRenderer?.destroy();
+  state.radarRenderer = null;
   if (state.settings.country !== 'DE' || state.settings.provider !== 'dwd') {
     container.innerHTML = `<div class="radar-error">${icon('mapPinned', 22)}<strong>Radar nur für Deutschland</strong><p>Der Regenradar kommt vom DWD und ist nur für Deutschland verfügbar – auch wenn du für Deutschland Open-Meteo gewählt hast.</p></div>`;
     state.radarData = null;
