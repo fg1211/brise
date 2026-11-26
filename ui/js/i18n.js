@@ -42,9 +42,9 @@ function ensureIndex() {
   for (const key of Object.keys(table())) {
     if (!key.includes('{')) continue;
     const pattern = patternFor(key);
-    if (!pattern.first) continue;
-    if (!patternIndex.has(pattern.first)) patternIndex.set(pattern.first, []);
-    patternIndex.get(pattern.first).push(key);
+    const first = pattern.first || '';
+    if (!patternIndex.has(first)) patternIndex.set(first, []);
+    patternIndex.get(first).push(key);
   }
 }
 
