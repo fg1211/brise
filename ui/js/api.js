@@ -1,3 +1,5 @@
+import { session } from './session.js';
+
 const tauri = window.__TAURI__;
 const core = tauri?.core;
 
@@ -5,7 +7,7 @@ export const isDesktop = Boolean(core?.invoke);
 
 async function invoke(command, args = {}) {
   if (!isDesktop) {
-    throw new Error('Die DWD-Schnittstelle ist nur in der Desktop-App verfügbar. Bitte starte Brise über die App.');
+    throw new Error('Die Wetterdaten sind nur in der Desktop-App verfügbar. Bitte starte Brise über die App.');
   }
   try {
     return await core.invoke(command, args);
@@ -17,12 +19,17 @@ async function invoke(command, args = {}) {
 }
 
 function cityPayload(city) {
+  const settings = session();
+  const country = String(city.country || settings.country || 'DE').toUpperCase();
+  const provider = country === 'DE' ? (settings.provider || 'dwd') : 'open-meteo';
   return {
     id: city.id,
     name: city.name,
     state: city.state,
     lat: city.lat,
     lon: city.lon,
+    country,
+    provider,
   };
 }
 
@@ -37,9 +44,14 @@ export async function fetchSummaries(cities, force = false) {
   });
 }
 
-/** Look up any German town by name (Open-Meteo/GeoNames, filtered to DE). */
+/** Ortsuche im ausgewählten Land und in der ausgewählten Sprache. */
 export async function searchPlaces(query) {
-  return invoke('search_places', { query });
+  const settings = session();
+  return invoke('search_places', {
+    query,
+    country: settings.country || 'DE',
+    language: settings.language || 'de',
+  });
 }
 
 export async function fetchRadar(city, distance = 120000) {
@@ -50,4 +62,13 @@ export async function fetchRadar(city, distance = 120000) {
       distance,
     },
   });
+}
+
+/** Grafikoptionen an das WebKit-Fenster durchreichen. */
+export async function setHardwareAcceleration(enabled) {
+  return invoke('set_hardware_acceleration', { enabled });
+}
+
+export async function setVsync(enabled) {
+  return invoke('set_vsync', { enabled });
 }
