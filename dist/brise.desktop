@@ -2,8 +2,8 @@
 Type=Application
 Version=1.0
 Name=Brise
-GenericName=Wetter
-Comment=Moderne DWD-Wetter-App für deutsche Städte
+GenericName=Weather
+Comment=Modern weather for places worldwide, with radar, warnings and forecasts
 Exec=brise-launch
 Icon=brise
 Terminal=false
