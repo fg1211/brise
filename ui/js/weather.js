@@ -40,13 +40,6 @@ const CONDITION_LABELS = {
   thunderstorm: 'Gewitter',
 };
 
-const DAY_LABELS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-const DAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-const MONTHS = [
-  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
-];
-
 const LOCALE_TAGS = { de: 'de-DE', en: 'en-GB', nl: 'nl-NL' };
 
 let activeLocaleTag = LOCALE_TAGS.de;
@@ -55,6 +48,7 @@ let timeFormatter;
 let weekdayFormatter;
 let weekdayShortFormatter;
 let titleDateFormatter;
+let longDateFormatter;
 
 function rebuildFormatters() {
   partsFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -86,7 +80,13 @@ function rebuildFormatters() {
     day: '2-digit',
     month: 'short',
   });
-  rebuildFormatters.ready = true;
+  longDateFormatter = new Intl.DateTimeFormat(activeLocaleTag, {
+    timeZone: TIME_ZONE,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 rebuildFormatters();
@@ -162,10 +162,7 @@ export function formatWeekday(value, short = false) {
 
 export function formatDateLong(value = new Date()) {
   const date = toDate(value) || new Date();
-  const parts = localParts(date);
-  const weekday = formatWeekday(date);
-  const month = MONTHS[Number(parts.month) - 1];
-  return `${weekday}, ${Number(parts.day)}. ${month} ${parts.year}`;
+  return longDateFormatter.format(date);
 }
 
 export function formatDateShort(value = new Date()) {
