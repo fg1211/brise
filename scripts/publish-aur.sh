@@ -39,6 +39,8 @@ for cmd in git makepkg ssh; do
   fi
 done
 
+export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes"
+
 work="$(mktemp -d /tmp/brise-aur.XXXXXX)"
 trap 'rm -rf "$work"' EXIT
 
