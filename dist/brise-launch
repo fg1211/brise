@@ -83,16 +83,19 @@ fi
 export GDK_GL="${BRISE_GDK_GL:-always}"
 
 # NVIDIA liefert drmWaitVBlank EOPNOTSUPP. Der Shim ersetzt genau diesen
-# Fehler durch einen echten Vblank mit BRISE_REFRESH_HZ; auf Treibern, die
-# Vblank selbst können, verändert er nichts.
+# Fehler durch einen echten Vblank mit der erkannten BRISE_REFRESH_HZ. Ohne
+# bekannte Frequenz wird er nicht geladen, damit er keine falschen 180 Hz
+# erfindet; auf Treibern mit eigenem Vblank verändert er nichts.
 shim="${BRISE_VBLANK_LIB:-$here/libbrise-vblank.so}"
 if [ ! -f "$shim" ] && [ -f /usr/lib/brise/libbrise-vblank.so ]; then
   shim=/usr/lib/brise/libbrise-vblank.so
 fi
-if [ -f "$shim" ]; then
-  export LD_PRELOAD="$shim${LD_PRELOAD:+:$LD_PRELOAD}"
-else
-  echo "Hinweis: Vblank-Shim fehlt – hohes Scroll-Tempo ist nicht verfügbar." >&2
+if [ -n "${BRISE_REFRESH_HZ:-}" ]; then
+  if [ -f "$shim" ]; then
+    export LD_PRELOAD="$shim${LD_PRELOAD:+:$LD_PRELOAD}"
+  else
+    echo "Hinweis: Vblank-Shim fehlt – hohes Scroll-Tempo ist nicht verfügbar." >&2
+  fi
 fi
 
 # Keine künstlichen Frame-Limits und kein erzwungenes Timer-Vblank: WebKit
