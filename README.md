@@ -22,7 +22,7 @@ A modern, fast weather app for the Linux desktop. No API key, no account, no tra
 
 Brise shows observations and forecasts from the **German Weather Service (DWD)** via the open Bright Sky API, and weather for the rest of the world from the free **Open-Meteo** API. For Germany you can choose your provider yourself. The backend is written in Rust and the interface runs in WebKitGTK — light, fast and sharp on Wayland.
 
-The place search finds **any town in the selected country**, including small municipalities and districts. Found places are saved permanently and can be added to your favourites. The interface speaks German, English and Dutch — independently of the country you are looking at.
+The place search is **worldwide**: it finds towns, municipalities and districts in every country through the free Open-Meteo geocoding API, without an API key or account. Found places are saved permanently and can be added to your favourites. The interface speaks German, English and Dutch — independently of the country you are looking at.
 
 ## Features
 
@@ -108,9 +108,9 @@ cd src-tauri && cargo build --release
 | `1` / `2` / `3` | Weather / radar / map of Germany |
 | `Esc` | Close dialog |
 
-In the settings you choose the search country, the interface language (German, English or Dutch) and — for Germany — whether weather comes from DWD or Open-Meteo. All other countries use Open-Meteo. Radar and official warnings remain DWD-only.
+In the settings you choose the default region, the interface language (German, English or Dutch) and — for Germany — whether weather comes from DWD or Open-Meteo. All other countries use Open-Meteo. Radar and official warnings remain DWD-only. Search always covers the whole world.
 
-In search you can enter any place in the selected country, even places outside the built-in city list. The star next to a result saves it permanently as a favourite.
+In search you can enter any place on Earth, even places outside the built-in city list. The star next to a result saves it permanently as a favourite.
 
 ## Monitor behaviour on Hyprland
 
