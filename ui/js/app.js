@@ -1178,11 +1178,11 @@ function openSettingsModal() {
       <div class="settings-section">
         <div class="settings-section-title">Grafik</div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Hardwarebeschleunigung</div><div class="setting-hint">Zeichnen und Scrollen über die Grafikkarte – flüssiger, aber etwas mehr Stromverbrauch.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Hardwarebeschleunigung</div><div class="setting-hint">Grafikkarte nutzen, wenn verfügbar. Auf NVIDIA/Wayland wählt Brise automatisch den 180-Hz-Pfad.</div></div>
           <button class="toggle" type="button" role="switch" aria-checked="${settings.hardwareAcceleration}" aria-label="Hardwarebeschleunigung" data-toggle-setting="hardwareAcceleration"></button>
         </div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">VSync</div><div class="setting-hint">Darstellung im Takt deines Monitors. Bei Ruckeln mit hohem Bildschirmtakt einfach ausprobieren.</div></div>
+          <div class="setting-row-copy"><div class="setting-label">VSync</div><div class="setting-hint">Darstellung im Monitor-Takt bis 180 Hz. Aus aktiviert ein sparsames 60-fps-Limit – für flüssiges Scrollen eingeschaltet lassen.</div></div>
           <button class="toggle" type="button" role="switch" aria-checked="${settings.vsync}" aria-label="VSync" data-toggle-setting="vsync"></button>
         </div>
         <div class="settings-note">Grafikänderungen werden sofort übernommen. Für die volle Wirkung starte Brise neu.</div>
