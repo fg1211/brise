@@ -1067,8 +1067,20 @@ fn enable_gpu_acceleration(window: &tauri::WebviewWindow) {
         let Some(settings) = webview.settings() else {
             return;
         };
-        settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Always);
-        settings.set_enable_webgl(true);
+        // Mit GDK_GL=disable holt GTK keine Wayland-Frame-Callbacks; WebKit
+        // darf dann keinen GL-Pfad erzwingen, sonst bricht der 180-Hz-Takt
+        // auf NVIDIA zusammen.
+        let gl_disabled = matches!(
+            std::env::var("GDK_GL").as_deref(),
+            Ok("disable" | "0" | "false")
+        );
+        let policy = if gl_disabled {
+            HardwareAccelerationPolicy::Never
+        } else {
+            HardwareAccelerationPolicy::Always
+        };
+        settings.set_hardware_acceleration_policy(policy);
+        settings.set_enable_webgl(!gl_disabled);
         settings.set_enable_smooth_scrolling(true);
         webkit_ffi::set_prefer_near_60_fps(&settings, false);
     });
@@ -1084,13 +1096,17 @@ fn set_hardware_acceleration(_app: tauri::AppHandle, enabled: bool) {
             use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
             let webview = webview.inner();
             if let Some(settings) = webview.settings() {
-                let policy = if enabled {
+                let gl_disabled = matches!(
+                    std::env::var("GDK_GL").as_deref(),
+                    Ok("disable" | "0" | "false")
+                );
+                let policy = if enabled && !gl_disabled {
                     HardwareAccelerationPolicy::Always
                 } else {
                     HardwareAccelerationPolicy::Never
                 };
                 settings.set_hardware_acceleration_policy(policy);
-                settings.set_enable_webgl(enabled);
+                settings.set_enable_webgl(enabled && !gl_disabled);
             }
         });
     }
