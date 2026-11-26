@@ -36,6 +36,7 @@ The place search finds **any town in the selected country**, including small mun
 - **Search & favourites**, persistent settings, units, five colour themes (*Midnight*, *Daylight*, *Afterglow*, *Ocean*, *Northern Forest*) and six accent colours.
 - **Modern interface**: more local icons, human wording and calm animations — still smooth while scrolling.
 - **Graphics controls**: hardware acceleration and VSync can be switched in the settings.
+- **180 Hz scrolling**: on Wayland with NVIDIA, a small vblank shim replaces the driver's `EOPNOTSUPP` response to `drmWaitVBlank`, and GTK's frame clock follows the real monitor rate. Scrolling runs at the display's refresh rate instead of a fixed 60 fps.
 - **Offline fallback**: the last loaded data stays usable with a clearly marked cache status.
 - **Scales with your workspace**: stays readable as a small tiled window on Hyprland.
 - **Wayland optimized**: native GTK/Wayland rendering, custom window decorations and a launcher for Hyprland.
