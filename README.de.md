@@ -36,7 +36,6 @@ Die Ortsuche ist **weltweit**: Sie findet Städte, Gemeinden und Stadtteile in a
 - **Suche & Favoriten**, persistente Einstellungen, Einheiten, fünf Farbwelten (*Mitternacht*, *Tageslicht*, *Abendrot*, *Ozean*, *Nordwald*) und sechs Akzentfarben.
 - **Überarbeitete Oberfläche**: mehr lokale Icons, menschlichere Texte und ruhige Animationen – weiterhin flüssig beim Scrollen.
 - **Grafik-Schalter**: Hardwarebeschleunigung und VSync lassen sich in den Einstellungen umschalten.
-- **180-Hz-Scrollen**: Auf NVIDIA/Wayland halten ein kleiner Vblank-Shim und monitor-genaue Frame-Timings das WebKit-Scrolling im Monitor-Takt statt bei festen 60 fps – mit aktivierter GPU. Siehe [Hochfrequentes Scrollen](#hochfrequentes-scrollen-180-hz).
 - **Offline-Fallback**: zuletzt geladene Daten bleiben mit klar gekennzeichnetem Cache-Status nutzbar.
 - **Skaliert mit der Arbeitsfläche**: auch als kleines, geteiltes Fenster auf Hyprland bleibt die Oberfläche übersichtlich.
 - **Wayland-optimiert**: native GTK/Wayland-Darstellung, eigene Fensterdekoration und ein Launcher für Hyprland.
@@ -53,7 +52,7 @@ cd brise
 ./install.sh                 # nach ~/.local
 ```
 
-Das installiert `brise`, `brise-launch`, den Vblank-Shim, die Desktop-Datei und die Icons. Danach ist Brise im Anwendungsmenü verfügbar oder direkt startbar:
+Das installiert `brise`, `brise-launch`, die Desktop-Datei und die Icons. Danach ist Brise im Anwendungsmenü verfügbar oder direkt startbar:
 
 ```bash
 brise-launch
@@ -121,17 +120,6 @@ BRISE_MONITOR=DP-1 brise-launch
 ```
 
 Unter X11 positioniert die App sich selbst; auf anderen Wayland-Compositoren entscheidet der Compositor.
-
-## Hochfrequentes Scrollen (180 Hz)
-
-Unter Wayland mit NVIDIA kann `DRM_IOCTL_WAIT_VBLANK` (`drmWaitVBlank`) mit `EOPNOTSUPP` antworten. WebKitGTK hört dann auf, dem Vblank des Monitors zu folgen, und fällt auf einen festen 60-fps-Timer zurück. Brise verhindert das, ohne die GPU abzuschalten:
-
-- `brise-launch` liest die Monitorfrequenz von Hyprland und exportiert sie als `BRISE_REFRESH_HZ`.
-- Nur wenn dieser Wert bekannt ist, wird `libbrise-vblank.so` per `LD_PRELOAD` geladen. Der Shim beantwortet genau diesen fehlschlagenden `drmWaitVBlank`-Aufruf mit einem echten Vblank in der erkannten Rate – er erfindet nie eine Frequenz.
-- OpenGL bleibt aktiv (`GDK_GL=always`), damit WebKit weiterhin auf der GPU komponiert. `GDK_GL=disable` erreicht zwar ebenfalls 180 Hz, verliert aber die Hardwarebeschleunigung und fühlt sich langsamer und ruckeliger an; deshalb wird das nicht verwendet.
-- Das Rust-Backend versieht jedes gezeichnete Frame mit echten `GdkFrameTimings` im Monitor-Takt und schaltet WebKits `PreferPageRenderingUpdatesNear60FPS`-Fallback ab.
-
-Auf einem 1920 × 1080 @ 179,998 Hz-Display sind das etwa **5,6 ms pro Frame (~180 Hz)** mit GPU-Rendering statt hart codierter 60 fps. Die zusätzlichen Animationen nutzen nur `transform` und `opacity`, respektieren `prefers-reduced-motion` und pausieren beim Scrollen. Hardwarebeschleunigung und VSync lassen sich weiterhin in den Einstellungen umschalten.
 
 ## Projektstruktur
 
