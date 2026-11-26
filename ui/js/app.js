@@ -1556,7 +1556,7 @@ function searchItemMarkup(item, index) {
       : (city.state || countryLabel);
     const weatherLabel = weather
       ? `${summaryLabel(city, weather)} · ${placeLabel}`
-      : (item.remote ? `${placeLabel} · Neu in Brise` : placeLabel);
+      : placeLabel;
     const iconMarkup = weather ? weatherIcon(summaryIconName(city, weather)) : icon('pin', 15);
     return `<div class="command-item${selected}${item.remote ? ' is-remote' : ''}" data-search-item="${index}" role="option" aria-selected="${index === state.searchIndex}">
       <span class="command-item-icon">${iconMarkup}</span>
@@ -1779,7 +1779,7 @@ function renderOnboardingResults(resetIndex = false) {
       : (city.state || countryLabel);
     const detail = weather
       ? `${summaryLabel(city, weather)} · ${placeLabel}`
-      : (item.remote ? `${placeLabel} · Neu in Brise` : placeLabel);
+      : placeLabel;
     const selected = index === onboarding.index;
     return `<div class="onboard-city${selected ? ' is-selected' : ''}" data-onboard-item="${index}" role="option" aria-selected="${selected}">
       <span class="onboard-city-icon">${weather ? weatherIcon(summaryIconName(city, weather)) : icon('pin', 17)}</span>
