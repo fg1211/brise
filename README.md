@@ -53,7 +53,7 @@ cd brise
 ./install.sh                 # installs into ~/.local
 ```
 
-This installs `brise`, `brise-launch`, the desktop file and the icons. Brise then appears in your application menu, or you can start it directly:
+This installs `brise`, `brise-launch`, the vblank shim, the desktop file and the icons. Brise then appears in your application menu, or you can start it directly:
 
 ```bash
 brise-launch
@@ -71,8 +71,9 @@ If no prebuilt binary is present, `install.sh` builds from source automatically.
 ### Portable archive
 
 ```bash
-tar -xzf dist/brise-1.1.0-x86_64.tar.gz
-cd dist && ./install.sh
+mkdir brise
+tar -xzf dist/brise-1.1.0-x86_64.tar.gz -C brise
+cd brise && ./install.sh
 ```
 
 ### Arch Linux
