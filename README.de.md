@@ -36,6 +36,7 @@ Die Ortsuche findet **jeden Ort im gewählten Land**, auch kleine Gemeinden und 
 - **Suche & Favoriten**, persistente Einstellungen, Einheiten, fünf Farbwelten (*Mitternacht*, *Tageslicht*, *Abendrot*, *Ozean*, *Nordwald*) und sechs Akzentfarben.
 - **Überarbeitete Oberfläche**: mehr lokale Icons, menschlichere Texte und ruhige Animationen – weiterhin flüssig beim Scrollen.
 - **Grafik-Schalter**: Hardwarebeschleunigung und VSync lassen sich in den Einstellungen umschalten.
+- **180-Hz-Scrollen**: Auf Wayland mit NVIDIA ersetzt ein kleiner Vblank-Shim die `EOPNOTSUPP`-Antwort des Treibers auf `drmWaitVBlank`, und der GTK-Frame-Clock folgt der echten Monitorfrequenz. Das Scrollen läuft im Monitor-Takt statt mit festen 60 fps.
 - **Offline-Fallback**: zuletzt geladene Daten bleiben mit klar gekennzeichnetem Cache-Status nutzbar.
 - **Skaliert mit der Arbeitsfläche**: auch als kleines, geteiltes Fenster auf Hyprland bleibt die Oberfläche übersichtlich.
 - **Wayland-optimiert**: native GTK/Wayland-Darstellung, eigene Fensterdekoration und ein Launcher für Hyprland.
