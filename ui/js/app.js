@@ -23,11 +23,13 @@ import {
   formatRelative,
   formatTemp,
   formatTime,
+  formatTitleDate,
   formatWeekday,
   formatWind,
   iconForCondition,
   iconLabel,
   precipitationLabel,
+  setWeatherLocale,
   solarTimes,
   sunProgress,
   tempValue,
@@ -36,7 +38,10 @@ import {
   windValue,
 } from './weather.js';
 import { renderTrendChart, renderDayChart } from './charts.js';
-import { fetchWeather, fetchSummaries, fetchRadar, searchPlaces } from './api.js';
+import { fetchWeather, fetchSummaries, fetchRadar, searchPlaces, setHardwareAcceleration, setVsync } from './api.js';
+import { setSession } from './session.js';
+import { setLanguage, startTranslationObserver, translateDocument, t } from './i18n.js';
+import { countryName, countryOptions } from './countries.js';
 import { RadarRenderer, radarLegend } from './radar.js';
 import { GERMANY_GEO } from './germany-geo.js';
 
@@ -125,13 +130,6 @@ const state = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-const titleDateFormatter = new Intl.DateTimeFormat('de-DE', {
-  timeZone: TIME_ZONE,
-  weekday: 'short',
-  day: '2-digit',
-  month: 'short',
-});
-
 function finite(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -171,6 +169,13 @@ function loadSettings() {
   }
   settings.refreshMinutes = Number(settings.refreshMinutes);
   settings.animations = settings.animations !== false;
+  settings.hardwareAcceleration = settings.hardwareAcceleration !== false;
+  settings.vsync = settings.vsync !== false;
+  if (!['de', 'en', 'nl'].includes(settings.language)) settings.language = 'de';
+  settings.country = String(settings.country || 'DE').toUpperCase();
+  if (!/^(ALL|[A-Z]{2})$/.test(settings.country)) settings.country = 'DE';
+  if (!['dwd', 'open-meteo'].includes(settings.provider)) settings.provider = 'dwd';
+  if (settings.country !== 'DE') settings.provider = 'open-meteo';
   return settings;
 }
 
@@ -189,6 +194,26 @@ function loadSelectedCity() {
 
 function persistSettings() {
   saveJSON(SETTINGS_KEY, state.settings);
+}
+
+async function applyGraphicsSettings() {
+  try { await setHardwareAcceleration(state.settings.hardwareAcceleration !== false); } catch (_) { /* nur in der Desktop-App */ }
+  try { await setVsync(state.settings.vsync !== false); } catch (_) { /* nur in der Desktop-App */ }
+}
+
+function applyLocaleAndRegion() {
+  const settings = state.settings;
+  setSession({ country: settings.country, language: settings.language, provider: settings.provider });
+  setLanguage(settings.language);
+  setWeatherLocale(settings.language);
+  const germanyNav = document.querySelector('[data-view-target="germany"]');
+  if (germanyNav) germanyNav.hidden = settings.country !== 'DE';
+  const providerLabel = settings.country === 'DE' && settings.provider === 'dwd' ? 'DWD' : 'Open-Meteo';
+  for (const id of ['brandProvider', 'sourceProvider']) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = providerLabel;
+  }
+  if (settings.country !== 'DE' && state.view === 'germany') switchView('weather');
 }
 
 function persistFavorites() {
@@ -241,7 +266,8 @@ function applyTheme() {
 
 function updateClock() {
   const now = new Date();
-  const time = new Intl.DateTimeFormat('de-DE', {
+  const localeTags = { de: 'de-DE', en: 'en-GB', nl: 'nl-NL' };
+  const time = new Intl.DateTimeFormat(localeTags[state.settings.language] || 'de-DE', {
     timeZone: TIME_ZONE,
     hour: '2-digit',
     minute: '2-digit',
@@ -250,7 +276,7 @@ function updateClock() {
   const titleTime = $('#titleTime');
   const titleDate = $('#titleDate');
   if (titleTime) titleTime.textContent = time;
-  if (titleDate) titleDate.textContent = titleDateFormatter.format(now).replace('.,', ',');
+  if (titleDate) titleDate.textContent = formatTitleDate(now);
 }
 
 function setLiveState(mode, label) {
@@ -430,7 +456,7 @@ function instantHourLabel(value) {
 
 function setPageLive(stale) {
   if (stale) setLiveState('stale', 'Offline-Daten');
-  else setLiveState('live', 'DWD aktuell');
+  else setLiveState('live', 'Daten aktuell');
 }
 
 
@@ -447,12 +473,12 @@ async function loadWeather(cityId, options = {}) {
     const existing = state.weather.get(cityId);
     if (!existing) {
       renderWeatherLoading(city);
-      setLiveState('loading', 'DWD lädt');
+      setLiveState('loading', 'Wetter lädt');
     } else {
       $('#refreshWeather')?.classList.add('is-loading');
       const indicator = $('#weatherUpdated');
       if (indicator && !quiet) indicator.textContent = 'Wird aktualisiert …';
-      if (!quiet) setLiveState('loading', 'DWD lädt');
+      if (!quiet) setLiveState('loading', 'Wetter lädt');
     }
   }
 
@@ -481,7 +507,7 @@ async function loadWeather(cityId, options = {}) {
         showToast('Keine Verbindung zum DWD. Brise zeigt die zuletzt geladenen Daten.', { tone: 'warn', icon: 'cloud' });
       } else {
         renderWeatherError(city, error);
-        setLiveState('error', 'DWD nicht erreichbar');
+        setLiveState('error', 'Wetter nicht erreichbar');
         const indicator = $('#weatherUpdated');
         if (indicator) {
           indicator.dataset.stale = 'false';
@@ -572,7 +598,7 @@ function weatherToolbarMarkup(city) {
   return `<div class="weather-toolbar">
     <div class="weather-context">
       ${icon('pin', 12)}
-      <span>Deutschland</span>
+      <span>${escapeHTML(countryName(city.country || state.settings.country, state.settings.language))}</span>
       <span class="context-sep">/</span>
       <strong>${escapeHTML(city.name)}</strong>
       <span class="context-state">${escapeHTML(city.state)}</span>
@@ -1093,7 +1119,7 @@ function openDayModal(dayKey) {
       </div>
       <div class="day-detail-chart" id="dayChart"></div>
       <div class="day-hours">${rows}</div>
-      <div class="settings-note">Alle Werte stammen aus den amtlichen DWD-Vorhersagen über Bright Sky. Zeiten in deutscher Ortszeit.</div>
+      <div class="settings-note">Alle Werte stammen aus offenen Wetterdaten. Zeiten in der Ortszeit des Ortes.</div>
     </div>
     <div class="modal-footer">
       <button class="action-button" type="button" data-close>Schließen</button>
@@ -1111,6 +1137,11 @@ function settingsSelectOptions(values, selected) {
 
 function openSettingsModal() {
   const settings = state.settings;
+  const languageOptions = [['de', 'Deutsch'], ['en', 'Englisch'], ['nl', 'Niederländisch']];
+  const providerOptions = [['dwd', 'Deutscher Wetterdienst (DWD)'], ['open-meteo', 'Open-Meteo']];
+  const countrySelect = countryOptions(settings.language, settings.country)
+    .map(({ value, label, selected }) => `<option value="${value}" ${selected ? 'selected' : ''}>${escapeHTML(label)}</option>`)
+    .join('');
   const overlayMarkup = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="modal-head">
       <div class="modal-head-copy">
@@ -1145,6 +1176,18 @@ function openSettingsModal() {
         </div>
       </div>
       <div class="settings-section">
+        <div class="settings-section-title">Grafik</div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Hardwarebeschleunigung</div><div class="setting-hint">Zeichnen und Scrollen über die Grafikkarte – flüssiger, aber etwas mehr Stromverbrauch.</div></div>
+          <button class="toggle" type="button" role="switch" aria-checked="${settings.hardwareAcceleration}" aria-label="Hardwarebeschleunigung" data-toggle-setting="hardwareAcceleration"></button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">VSync</div><div class="setting-hint">Darstellung im Takt deines Monitors. Bei Ruckeln mit hohem Bildschirmtakt einfach ausprobieren.</div></div>
+          <button class="toggle" type="button" role="switch" aria-checked="${settings.vsync}" aria-label="VSync" data-toggle-setting="vsync"></button>
+        </div>
+        <div class="settings-note">Grafikänderungen werden sofort übernommen. Für die volle Wirkung starte Brise neu.</div>
+      </div>
+      <div class="settings-section">
         <div class="settings-section-title">Einheiten</div>
         <div class="setting-row">
           <div class="setting-row-copy"><div class="setting-label">Temperatur</div><div class="setting-hint">Gilt für alle Anzeigen und Diagramme.</div></div>
@@ -1172,6 +1215,21 @@ function openSettingsModal() {
         </div>
       </div>
       <div class="settings-section">
+        <div class="settings-section-title">Region & Sprache</div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Land</div><div class="setting-hint">In welchem Land sollen Orte gesucht und Wetter geholt werden?</div></div>
+          <div class="setting-control"><select class="settings-select" data-setting="country" aria-label="Land">${countrySelect}</select></div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Sprache</div><div class="setting-hint">Die Sprache der Oberfläche – unabhängig vom Land.</div></div>
+          <div class="setting-control"><select class="settings-select" data-setting="language" aria-label="Sprache">${settingsSelectOptions(languageOptions, settings.language)}</select></div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-row-copy"><div class="setting-label">Wetterquelle</div><div class="setting-hint">Für Deutschland kannst du zwischen DWD und Open-Meteo wählen. Andere Länder nutzen Open-Meteo.</div></div>
+          <div class="setting-control"><select class="settings-select" data-setting="provider" aria-label="Wetterquelle" ${settings.country === 'DE' ? '' : 'disabled'}>${settingsSelectOptions(providerOptions, settings.provider)}</select></div>
+        </div>
+      </div>
+      <div class="settings-section">
         <div class="settings-section-title">Daten</div>
         <div class="setting-row">
           <div class="setting-row-copy"><div class="setting-label">Automatisch aktualisieren</div><div class="setting-hint">Brise holt neue Messwerte, ohne dass du etwas tun musst.</div></div>
@@ -1181,7 +1239,7 @@ function openSettingsModal() {
             </select>
           </div>
         </div>
-        <div class="settings-note">Brise nutzt kostenlose, offene Wetterdaten des Deutschen Wetterdienstes über Bright Sky. Es werden keine Konten, API-Schlüssel oder Tracking-Dienste benötigt.</div>
+        <div class="settings-note">Brise nutzt kostenlose, offene Wetterdaten von DWD und Open-Meteo. Es werden keine Konten, API-Schlüssel oder Tracking-Dienste benötigt.</div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Tastatur</div>
@@ -1212,8 +1270,16 @@ function openSettingsModal() {
         let value = event.target.value;
         if (key === 'refreshMinutes') value = Number(value);
         state.settings[key] = value;
+        if (key === 'country' && state.settings.country !== 'DE') state.settings.provider = 'open-meteo';
         persistSettings();
         applyTheme();
+        if (['country', 'language', 'provider'].includes(key)) {
+          applyLocaleAndRegion();
+          scheduleRefresh();
+          refreshAllData();
+          openSettingsModal();
+          return;
+        }
         if (key === 'refreshMinutes') scheduleRefresh();
         rerenderForSettings();
       });
@@ -1240,6 +1306,10 @@ function openSettingsModal() {
           toggle.setAttribute('aria-checked', String(state.settings[key]));
           persistSettings();
           applyTheme();
+          if (key === 'hardwareAcceleration' || key === 'vsync') {
+            applyGraphicsSettings();
+            showToast(t('Für die volle Wirkung bitte Brise neu starten.'), { icon: 'settings' });
+          }
           rerenderForSettings();
           return;
         }
@@ -1250,6 +1320,7 @@ function openSettingsModal() {
         } else if (action === 'reset') {
           state.settings = { ...DEFAULT_SETTINGS };
           persistSettings();
+          applyLocaleAndRegion();
           applyTheme();
           scheduleRefresh();
           rerenderForSettings();
@@ -1296,7 +1367,7 @@ function openAboutModal() {
         <div class="about-link">${icon('pin', 14)}<strong>Ortsuche</strong><span>Open-Meteo Geocoding · GeoNames</span></div>
         <div class="about-link">${icon('radar', 14)}<strong>Radar</strong><span>DWD Radarverbund, 5-Minuten-Komposite</span></div>
       </div>
-      <div class="settings-note">Brise 1.0 · Tauri 2 · WebKitGTK · Wayland-optimiert. DWD-Daten stehen unter der Lizenz „Geodaten Deutschland – Namensnennung“.</div>
+      <div class="settings-note">Brise 1.1 · Tauri 2 · WebKitGTK · Wayland-optimiert. Kostenlose Wetterdaten von DWD und Open-Meteo.</div>
     </div>
     <div class="modal-footer">
       <span style="margin-right:auto;font-size:9px;color:var(--text-3)">Mit Sorgfalt für Linux gebaut.</span>
@@ -1402,6 +1473,7 @@ async function runRemoteSearch(query) {
       state: place.state,
       lat: place.lat,
       lon: place.lon,
+      country: place.countryCode || 'DE',
     }));
   } catch (error) {
     if (generation !== state.searchGeneration) return;
@@ -1675,6 +1747,7 @@ async function runOnboardingSearch(query) {
       state: place.state,
       lat: place.lat,
       lon: place.lon,
+      country: place.countryCode || 'DE',
     }));
   } catch (error) {
     if (generation !== state.onboarding.generation) return;
@@ -1746,6 +1819,10 @@ function onboardingSetStep(step) {
 
 function openOnboarding() {
   if (state.onboardingOpen || !needsOnboarding()) return;
+  const languageOptions = [['de', 'Deutsch'], ['en', 'Englisch'], ['nl', 'Niederländisch']];
+  const onboardCountries = countryOptions(state.settings.language, state.settings.country)
+    .map(({ value, label, selected }) => `<option value="${value}" ${selected ? 'selected' : ''}>${escapeHTML(label)}</option>`)
+    .join('');
   Object.assign(state.onboarding, {
     step: 1, items: [], places: [], index: 0,
     loading: false, error: null, generation: state.onboarding.generation + 1,
@@ -1793,6 +1870,10 @@ function openOnboarding() {
               .join('')}
           </div>
         </div>
+        <div class="onboard-region">
+          <div class="onboard-region-row"><label class="onboard-label" for="onboardLanguage">Sprache</label><select class="settings-select" id="onboardLanguage">${settingsSelectOptions(languageOptions, state.settings.language)}</select></div>
+          <div class="onboard-region-row"><label class="onboard-label" for="onboardCountry">Land</label><select class="settings-select" id="onboardCountry">${onboardCountries}</select></div>
+        </div>
       </section>
       <section class="onboarding-step" data-onboard-step="2" hidden>
         <label class="onboard-label" for="onboardInput">Welcher Ort ist dein Startort?</label>
@@ -1829,6 +1910,18 @@ function openOnboarding() {
         other.classList.toggle('is-active', other === button);
       });
     });
+  });
+
+  $('#onboardLanguage', overlay)?.addEventListener('change', (event) => {
+    state.settings.language = event.target.value;
+    persistSettings();
+    applyLocaleAndRegion();
+  });
+  $('#onboardCountry', overlay)?.addEventListener('change', (event) => {
+    state.settings.country = event.target.value;
+    if (state.settings.country !== 'DE') state.settings.provider = 'open-meteo';
+    persistSettings();
+    applyLocaleAndRegion();
   });
 
   const input = $('#onboardInput', overlay);
@@ -2046,6 +2139,11 @@ function mountRadarRenderer(city) {
 function renderRadarView() {
   const container = $('#radarContent');
   if (!container) return;
+  if (state.settings.country !== 'DE' || state.settings.provider !== 'dwd') {
+    container.innerHTML = `<div class="radar-error">${icon('mapPinned', 22)}<strong>Radar nur für Deutschland</strong><p>Der Regenradar kommt vom DWD und ist nur für Deutschland verfügbar – auch wenn du für Deutschland Open-Meteo gewählt hast.</p></div>`;
+    state.radarData = null;
+    return;
+  }
   const city = currentCity();
   container.innerHTML = radarShellMarkup(city);
   if (state.radarData && state.radarCityId === city.id) {
@@ -2054,6 +2152,11 @@ function renderRadarView() {
 }
 
 async function loadRadar(force = false) {
+  if (state.settings.country !== 'DE' || state.settings.provider !== 'dwd') {
+    state.radarLoading = false;
+    renderRadarView();
+    return;
+  }
   const city = currentCity();
   const cityChanged = state.radarCityId !== city.id;
   if (state.radarLoading && !cityChanged) return;
@@ -2413,7 +2516,7 @@ async function loadGermany(force = false) {
     state.germanyError = usefulError(error);
     console.warn('Brise: Deutschlandkarte konnte nicht geladen werden', error);
     if (!MAP_CITY_IDS.some((id) => mapCityWeather(id))) {
-      setLiveState('error', 'DWD nicht erreichbar');
+      setLiveState('error', 'Wetter nicht erreichbar');
     } else {
       showToast('Die Karte zeigt den zuletzt geladenen Stand.', { tone: 'warn', icon: 'cloud' });
     }
@@ -2850,6 +2953,7 @@ function setupScrollPerformance() {
       window.clearTimeout(idleTimer);
       idleTimer = window.setTimeout(() => {
         delete document.documentElement.dataset.scrolling;
+        translateDocument();
       }, 180);
     },
     { passive: true, capture: true },
@@ -2859,6 +2963,9 @@ function setupScrollPerformance() {
 function startApp() {
   injectStaticIcons();
   applyTheme();
+  applyLocaleAndRegion();
+  applyGraphicsSettings();
+  startTranslationObserver();
   setupScrollPerformance();
   updateClock();
   window.setInterval(updateClock, 1000);
