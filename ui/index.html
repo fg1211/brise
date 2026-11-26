@@ -15,8 +15,9 @@
     <link rel="stylesheet" href="./styles/radar.css" />
     <link rel="stylesheet" href="./styles/germany.css" />
     <link rel="stylesheet" href="./styles/glass.css" />
-    <link rel="stylesheet" href="./styles/performance.css" />
     <link rel="stylesheet" href="./styles/themes.css" />
+    <link rel="stylesheet" href="./styles/modern.css" />
+    <link rel="stylesheet" href="./styles/performance.css" />
   </head>
   <body>
     <div id="app" class="app">
@@ -48,20 +49,20 @@
         </nav>
 
         <div class="titlebar-tools">
-          <div class="live-pill" id="livePill" title="Datenquelle: Deutscher Wetterdienst">
+          <div class="live-pill" id="livePill" title="Daten vom Deutschen Wetterdienst">
             <i class="live-dot"></i><span id="liveLabel">DWD aktuell</span>
           </div>
-          <div class="title-clock" id="titleClock" title="Ortszeit in Deutschland">
+          <div class="title-clock" id="titleClock" title="Deutsche Uhrzeit">
             <span id="titleTime">--:--</span>
             <span id="titleDate">Heute</span>
           </div>
           <button class="command-trigger" id="openSearch" type="button" aria-label="Ort oder Befehl suchen">
             <span data-ui-icon="search"></span>
-            <span class="command-placeholder">Suchen</span>
+            <span class="command-placeholder">Suche</span>
             <kbd>Strg K</kbd>
           </button>
           <button class="icon-button titlebar-button" id="openSettings" type="button" aria-label="Einstellungen" title="Einstellungen">
-            <span data-ui-icon="settings"></span>
+            <span data-ui-icon="sliders"></span>
           </button>
           <div class="window-controls" aria-label="Fenstersteuerung">
             <button type="button" class="window-button" id="windowMinimize" aria-label="Minimieren" title="Minimieren"><span data-ui-icon="minimize"></span></button>
@@ -80,7 +81,7 @@
               <kbd>+</kbd>
             </button>
             <div class="sidebar-heading">
-              <span>Meine Orte</span>
+              <span>Deine Orte</span>
               <span class="count" id="favoriteCount">–</span>
             </div>
             <div class="favorites-list" id="favoritesList">
@@ -93,25 +94,26 @@
 
           <div class="sidebar-bottom">
             <button class="discover-card" id="discoverGermany" type="button">
-              <span class="discover-icon" data-ui-icon="map"></span>
+              <span class="discover-icon" data-ui-icon="mapPinned"></span>
               <span class="discover-copy">
-                <strong>Deutschland entdecken</strong>
-                <small>Wetter aus 21 Städten</small>
+                <strong>Ganz Deutschland</strong>
+                <small>21 Städte im Blick</small>
               </span>
               <span class="discover-arrow" data-ui-icon="arrowUpRight"></span>
             </button>
             <div class="source-card">
               <div class="source-head">
+                <span class="source-shield" data-ui-icon="shield"></span>
                 <span class="source-mark">DWD</span>
                 <span class="source-live"><i></i> Offene Daten</span>
               </div>
               <p>Amtliche Wetterdaten, direkt vom Deutschen Wetterdienst über Bright Sky.</p>
               <div class="source-footer">
-                <span>Kostenlos & ohne API-Schlüssel</span>
+                <span>Kostenlos, ohne Anmeldung</span>
                 <button type="button" id="openAbout" aria-label="Über die Datenquelle">Info</button>
               </div>
             </div>
-            <div class="sidebar-credit">Brise 1.0</div>
+            <div class="sidebar-credit">Brise 1.0.8</div>
           </div>
         </aside>
 
@@ -120,7 +122,7 @@
             <div class="view-inner" id="weatherContent">
               <div class="initial-loader">
                 <span class="loader-orbit"></span>
-                <span>Der Himmel über Deutschland wird geladen …</span>
+                <span>Wetter wird geladen …</span>
               </div>
             </div>
           </section>
