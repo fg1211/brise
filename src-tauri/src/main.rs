@@ -823,8 +823,8 @@ async fn get_current_summaries(
     Ok(tasks)
 }
 
-/// Ortsuche für jedes Land. Land und Sprache kommen aus den Einstellungen;
-/// ohne Angabe bleibt Deutschland die Vorauswahl.
+/// Ortsuche weltweit über Open-Meteo Geocoding. Ohne Länderangabe wird nicht
+/// auf ein Land eingegrenzt.
 #[tauri::command]
 async fn search_places(
     app: tauri::AppHandle,
@@ -838,7 +838,7 @@ async fn search_places(
     }
 
     let country_code = country
-        .unwrap_or_else(|| "DE".into())
+        .unwrap_or_else(|| "ALL".into())
         .trim()
         .to_uppercase();
     let lang = language
