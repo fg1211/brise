@@ -78,10 +78,9 @@ if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; the
   export GDK_BACKEND=wayland
 fi
 
-# GTK3s GL-Pfad holt keine Wayland-Frame-Callbacks und läuft deshalb mit
-# festen 60 Hz. Ohne GL folgt der Frame-Clock dem echten Monitor-Takt;
-# WebKit komponiert dabei weiterhin über den eigenen GPU/DMABUF-Pfad.
-export GDK_GL="${BRISE_GDK_GL:-disable}"
+# OpenGL bleibt aktiv, damit WebKit auf der GPU komponiert. Die GTK3-Frame-
+# Clock bekommt die Monitorfrequenz direkt in Rust gesetzt (sonst 60 Hz).
+export GDK_GL="${BRISE_GDK_GL:-always}"
 
 # NVIDIA liefert drmWaitVBlank EOPNOTSUPP. Der Shim ersetzt genau diesen
 # Fehler durch einen echten Vblank mit BRISE_REFRESH_HZ; auf Treibern, die
