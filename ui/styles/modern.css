@@ -186,6 +186,28 @@ input:focus-visible {
   transform: scale(0.86);
 }
 
+.onboard-region {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.onboard-region-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboard-region-row .settings-select {
+  min-width: 180px;
+}
+
+.settings-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .modal-close .ui-icon {
   transition: transform 220ms var(--ease-soft);
 }
