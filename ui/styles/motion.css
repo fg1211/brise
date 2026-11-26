@@ -160,6 +160,7 @@ html[data-scrolling='on'] .radar-marker {
 }
 
 /* Beim Wechsel zwischen gespeicherten Orten einmalig die Eingänge aus. */
+html[data-weather-switch='on'] .view.is-active .card,
 html[data-weather-switch='on'] .hero-temp,
 html[data-weather-switch='on'] .favorite-row,
 html[data-weather-switch='on'] .forecast-row,
