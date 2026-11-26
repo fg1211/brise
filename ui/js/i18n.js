@@ -66,7 +66,8 @@ function translateValue(text) {
       let result = current[key] ?? german[key];
       if (result === undefined) continue;
       pattern.names.forEach((name, index) => {
-        result = result.replaceAll(`{${name}}`, match[index + 1]);
+        const captured = match[index + 1];
+        result = result.replaceAll(`{${name}}`, translateValue(captured) ?? captured);
       });
       return result;
     }
