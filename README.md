@@ -36,7 +36,7 @@ The place search is **worldwide**: it finds towns, municipalities and districts 
 - **Search & favourites**, persistent settings, units, five colour themes (*Midnight*, *Daylight*, *Afterglow*, *Ocean*, *Northern Forest*) and six accent colours.
 - **Modern interface**: more local icons, human wording and calm animations — still smooth while scrolling.
 - **Graphics controls**: hardware acceleration and VSync can be switched in the settings.
-- **180 Hz scrolling**: on Wayland with NVIDIA, a small vblank shim replaces the driver's `EOPNOTSUPP` response to `drmWaitVBlank`, and GTK's frame clock follows the real monitor rate. Scrolling runs at the display's refresh rate instead of a fixed 60 fps.
+- **180 Hz scrolling**: on NVIDIA/Wayland a small vblank shim and monitor-paced frame timings keep WebKit scrolling at the display's refresh rate instead of a fixed 60 fps — with the GPU still enabled. See [High-refresh scrolling](#high-refresh-scrolling-180-hz).
 - **Offline fallback**: the last loaded data stays usable with a clearly marked cache status.
 - **Scales with your workspace**: stays readable as a small tiled window on Hyprland.
 - **Wayland optimized**: native GTK/Wayland rendering, custom window decorations and a launcher for Hyprland.
@@ -121,6 +121,17 @@ BRISE_MONITOR=DP-1 brise-launch
 ```
 
 On X11 the app positions itself; on other Wayland compositors the compositor decides.
+
+## High-refresh scrolling (180 Hz)
+
+On Wayland with NVIDIA, `DRM_IOCTL_WAIT_VBLANK` (`drmWaitVBlank`) may answer with `EOPNOTSUPP`. WebKitGTK then stops following the monitor's vblank and falls back to a fixed 60 fps timer. Brise avoids that without switching off the GPU:
+
+- `brise-launch` reads the monitor's refresh rate from Hyprland and exports it as `BRISE_REFRESH_HZ`.
+- Only when that value is known does it preload `libbrise-vblank.so`. The shim answers just that failing `drmWaitVBlank` call with a real vblank at the detected rate — it never invents a refresh rate.
+- OpenGL stays enabled (`GDK_GL=always`), so WebKit keeps compositing on the GPU. Disabling GL also reaches 180 Hz, but loses hardware acceleration and feels slower and jerkier, so it is not used.
+- The Rust backend stamps every drawn frame's `GdkFrameTimings` with the real refresh interval and turns off WebKit's `PreferPageRenderingUpdatesNear60FPS` fallback.
+
+On a 1920 × 1080 @ 179.998 Hz display this measures about **5.6 ms per frame (~180 Hz)** with GPU rendering, instead of a hard-coded 60 fps. The extra animations use only `transform` and `opacity`, respect `prefers-reduced-motion` and pause while scrolling. Hardware acceleration and VSync can still be toggled in the settings.
 
 ## Project structure
 
