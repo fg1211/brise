@@ -21,7 +21,7 @@ pkgbase = brise
 	depends = desktop-file-utils
 	optdepends = hyprland: tile the window on the monitor under the cursor
 	options = !lto
-	source = brise-9df13cf0f2ff8d60f2697b09502b6d39aea9a8c7.tar.gz::https://github.com/fg1211/brise/archive/9df13cf0f2ff8d60f2697b09502b6d39aea9a8c7.tar.gz
-	sha256sums = 148d009e5e1a12e5d129b14bc4503f9ffbd52f9b591c955739101374374619cd
+	source = brise-08b8a2e347d2bc907916094f84b378d671f5ad1b.tar.gz::https://github.com/fg1211/brise/archive/08b8a2e347d2bc907916094f84b378d671f5ad1b.tar.gz
+	sha256sums = 75608946ed905c393427c8c3a0a7068e2edcbbe5ed0726d0825fdf6976a812b6
 
 pkgname = brise
