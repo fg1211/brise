@@ -275,7 +275,12 @@ function updateClock() {
   }).format(now);
   const titleTime = $('#titleTime');
   const titleDate = $('#titleDate');
-  if (titleTime) titleTime.textContent = time;
+  if (titleTime && titleTime.textContent !== time) {
+    titleTime.textContent = time;
+    titleTime.classList.remove('is-ticking');
+    void titleTime.offsetWidth;
+    titleTime.classList.add('is-ticking');
+  }
   if (titleDate) titleDate.textContent = formatTitleDate(now);
 }
 
