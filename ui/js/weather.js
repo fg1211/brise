@@ -1,4 +1,4 @@
-export const TIME_ZONE = 'Europe/Berlin';
+export let TIME_ZONE = 'Europe/Berlin';
 
 export const DEFAULT_SETTINGS = {
   theme: 'night',
@@ -8,6 +8,11 @@ export const DEFAULT_SETTINGS = {
   precipUnit: 'mm',
   animations: true,
   refreshMinutes: 10,
+  country: 'DE',
+  language: 'de',
+  provider: 'dwd',
+  hardwareAcceleration: true,
+  vsync: true,
 };
 
 const ICON_LABELS = {
@@ -42,32 +47,71 @@ const MONTHS = [
   'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
 ];
 
-const partsFormatter = new Intl.DateTimeFormat('en-GB', {
-  timeZone: TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
+const LOCALE_TAGS = { de: 'de-DE', en: 'en-GB', nl: 'nl-NL' };
 
-const timeFormatter = new Intl.DateTimeFormat('de-DE', {
-  timeZone: TIME_ZONE,
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
+let activeLocaleTag = LOCALE_TAGS.de;
+let partsFormatter;
+let timeFormatter;
+let weekdayFormatter;
+let weekdayShortFormatter;
+let titleDateFormatter;
 
-const weekdayFormatter = new Intl.DateTimeFormat('de-DE', {
-  timeZone: TIME_ZONE,
-  weekday: 'long',
-});
+function rebuildFormatters() {
+  partsFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  timeFormatter = new Intl.DateTimeFormat(activeLocaleTag, {
+    timeZone: TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  weekdayFormatter = new Intl.DateTimeFormat(activeLocaleTag, {
+    timeZone: TIME_ZONE,
+    weekday: 'long',
+  });
+  weekdayShortFormatter = new Intl.DateTimeFormat(activeLocaleTag, {
+    timeZone: TIME_ZONE,
+    weekday: 'short',
+  });
+  titleDateFormatter = new Intl.DateTimeFormat(activeLocaleTag, {
+    timeZone: TIME_ZONE,
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+  });
+  rebuildFormatters.ready = true;
+}
 
-const weekdayShortFormatter = new Intl.DateTimeFormat('de-DE', {
-  timeZone: TIME_ZONE,
-  weekday: 'short',
-});
+rebuildFormatters();
+
+export function formatTitleDate(value = new Date()) {
+  const date = toDate(value) || new Date();
+  return titleDateFormatter.format(date).replace('.,', ',');
+}
+
+export function setWeatherLocale(language = 'de') {
+  activeLocaleTag = LOCALE_TAGS[language] || LOCALE_TAGS.de;
+  rebuildFormatters();
+}
+
+/** Zeiten im Falle eines ausländischen Ortes in dessen Zeitzone zeigen. */
+export function setWeatherTimeZone(timeZone) {
+  if (typeof timeZone !== 'string' || !timeZone || timeZone === TIME_ZONE) return;
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone });
+  } catch {
+    return;
+  }
+  TIME_ZONE = timeZone;
+  rebuildFormatters();
+}
 
 export function escapeHTML(value = '') {
   return String(value)
@@ -410,6 +454,7 @@ function dominantIcon(hours) {
 }
 
 export function buildModel(bundle, city, settings = DEFAULT_SETTINGS) {
+  setWeatherTimeZone(bundle?.timezone);
   const now = new Date();
   const sun = solarTimes(now, city.lat, city.lon);
   const nightNow = sun.sunrise && sun.sunset
