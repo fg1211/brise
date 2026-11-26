@@ -1,0 +1,239 @@
+/* Moderner Feinschliff. Alle Bewegungen laufen über transform/opacity und
+   werden von performance.css beim Scrollen ausgebremst. */
+
+:root {
+  --ease-soft: cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+
+button:focus-visible,
+[role='button']:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Kopfzeile */
+.brand-mark {
+  transition: transform 320ms var(--ease-soft);
+}
+
+.titlebar:hover .brand-mark {
+  transform: rotate(-4deg) scale(1.05);
+}
+
+.nav-item {
+  position: relative;
+  transition: transform 180ms var(--ease-soft), color 160ms ease, background 160ms ease;
+}
+
+.nav-item::after {
+  content: '';
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  opacity: 0;
+  transition: transform 240ms var(--ease-soft), opacity 180ms ease;
+}
+
+.nav-item.is-active::after {
+  transform: scaleX(1);
+  opacity: 0.85;
+}
+
+.nav-item:hover {
+  transform: translateY(-1px);
+}
+
+.nav-item:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.command-trigger {
+  transition: transform 180ms var(--ease-soft), border-color 160ms ease, background 160ms ease;
+}
+
+.command-trigger:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+}
+
+.refresh-button:hover .ui-icon {
+  animation: softSpin 720ms var(--ease-soft);
+}
+
+@keyframes softSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Seitenleiste */
+.sidebar-search:hover .sidebar-search-icon .ui-icon {
+  transform: rotate(-6deg) scale(1.08);
+}
+
+.sidebar-search-icon .ui-icon {
+  transition: transform 220ms var(--ease-soft);
+}
+
+.favorite-row {
+  transition: transform 180ms var(--ease-soft), background 160ms ease, border-color 160ms ease;
+}
+
+.favorite-row:hover {
+  transform: translateX(3px);
+}
+
+.source-head {
+  align-items: center;
+}
+
+.source-shield {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.source-shield .ui-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.discover-arrow {
+  transition: transform 220ms var(--ease-soft);
+}
+
+.discover-card:hover .discover-arrow {
+  transform: translate(3px, -3px);
+}
+
+/* Karten und Werte */
+.card {
+  transition: transform 220ms var(--ease-soft), border-color 180ms ease, box-shadow 220ms ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+}
+
+.metric-tile {
+  transition: transform 180ms var(--ease-soft), background 160ms ease, border-color 160ms ease;
+}
+
+.metric-tile:hover {
+  transform: translateY(-2px);
+}
+
+.metric-head .ui-icon {
+  transition: transform 220ms var(--ease-soft), color 160ms ease;
+}
+
+.metric-tile:hover .metric-head .ui-icon {
+  transform: translateY(-2px) rotate(-6deg);
+  color: var(--accent);
+}
+
+.kicker .ui-icon,
+.ranking-foot .ui-icon {
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  color: var(--accent);
+}
+
+/* buttons */
+.action-button {
+  transition: transform 160ms var(--ease-soft), background 160ms ease, border-color 160ms ease;
+}
+
+.action-button:hover {
+  transform: translateY(-1px);
+}
+
+.action-button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.action-button.primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.action-button.primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  left: -55%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  transform: skewX(-18deg);
+  transition: left 520ms var(--ease-soft);
+  pointer-events: none;
+}
+
+.action-button.primary:hover::after {
+  left: 130%;
+}
+
+.accent-swatch:active {
+  transform: scale(0.86);
+}
+
+.modal-close .ui-icon {
+  transition: transform 220ms var(--ease-soft);
+}
+
+.modal-close:hover .ui-icon {
+  transform: rotate(90deg);
+}
+
+/* Sanftes Hereingleiten neuer Ansichten */
+@keyframes softRise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.view.is-active .card {
+  animation: softRise 400ms var(--ease-soft) both;
+}
+
+.view.is-active .card:nth-child(2) { animation-delay: 45ms; }
+.view.is-active .card:nth-child(3) { animation-delay: 90ms; }
+.view.is-active .card:nth-child(4) { animation-delay: 135ms; }
+.view.is-active .card:nth-child(5) { animation-delay: 180ms; }
+.view.is-active .card:nth-child(n + 6) { animation-delay: 220ms; }
+
+/* Scrollen und reduzierte Bewegung haben immer Vorrang. */
+html[data-scrolling='on'] .card,
+html[data-scrolling='on'] .card:hover,
+html[data-scrolling='on'] .metric-tile:hover,
+html[data-scrolling='on'] .favorite-row:hover,
+html[data-scrolling='on'] .nav-item:hover,
+html[data-scrolling='on'] .command-trigger:hover {
+  animation-play-state: paused !important;
+  transform: none !important;
+}
+
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
