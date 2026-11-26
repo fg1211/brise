@@ -1,0 +1,190 @@
+/* Zusätzliche Bewegung. Alles läuft über transform/opacity auf dem
+   Compositor; beim Scrollen werden die dauerhaften Effekte pausiert. */
+
+@keyframes briseRise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes briseSlide {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes brisePop {
+  0% { opacity: 0; transform: scale(0.92); }
+  65% { opacity: 1; transform: scale(1.025); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes briseBar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes briseBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes briseSway {
+  0%, 100% { transform: rotate(-4deg) scale(1); }
+  50% { transform: rotate(6deg) scale(1.07); }
+}
+
+@keyframes briseTick {
+  0% { opacity: 0.35; transform: translateY(-5px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes briseFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes briseBarY {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes briseDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Gestaffelte Eingänge für alles, was neu eingesetzt wird. `backwards`
+   erhält die Hover-Transforms nach Ende der Animation. */
+.hero-temp {
+  animation: brisePop 520ms var(--ease-soft) backwards;
+}
+
+.favorite-row {
+  animation: briseRise 380ms var(--ease-soft) backwards;
+}
+
+.favorite-row:nth-child(2) { animation-delay: 40ms; }
+.favorite-row:nth-child(3) { animation-delay: 80ms; }
+.favorite-row:nth-child(4) { animation-delay: 120ms; }
+.favorite-row:nth-child(n + 5) { animation-delay: 160ms; }
+
+.forecast-row,
+.day-hour-row,
+.setting-row,
+.shortcut-row {
+  animation: briseRise 360ms var(--ease-soft) backwards;
+}
+
+.forecast-row:nth-child(2),
+.day-hour-row:nth-child(2) { animation-delay: 35ms; }
+.forecast-row:nth-child(3),
+.day-hour-row:nth-child(3) { animation-delay: 70ms; }
+.forecast-row:nth-child(4),
+.day-hour-row:nth-child(4) { animation-delay: 105ms; }
+.forecast-row:nth-child(n + 5),
+.day-hour-row:nth-child(n + 5) { animation-delay: 140ms; }
+
+.hour-item {
+  animation: briseSlide 420ms var(--ease-soft) backwards;
+}
+
+.hour-item:nth-child(2) { animation-delay: 25ms; }
+.hour-item:nth-child(3) { animation-delay: 50ms; }
+.hour-item:nth-child(4) { animation-delay: 75ms; }
+.hour-item:nth-child(5) { animation-delay: 100ms; }
+.hour-item:nth-child(n + 6) { animation-delay: 125ms; }
+
+.day-summary-cell {
+  animation: brisePop 320ms var(--ease-soft) backwards;
+}
+
+.day-summary-cell:nth-child(2) { animation-delay: 45ms; }
+.day-summary-cell:nth-child(3) { animation-delay: 90ms; }
+.day-summary-cell:nth-child(4) { animation-delay: 135ms; }
+.day-summary-cell:nth-child(5) { animation-delay: 180ms; }
+.day-summary-cell:nth-child(6) { animation-delay: 225ms; }
+
+.metric-bar i,
+.daylight-line i {
+  transform-origin: left center;
+  animation: briseBar 620ms var(--ease-soft) backwards;
+}
+
+/* Diagramme zeichnen sich beim Rendern auf, statt fertig zu erscheinen. */
+.chart-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: briseDraw 850ms var(--ease-soft) forwards;
+}
+
+.chart-area {
+  animation: briseFade 700ms ease backwards;
+}
+
+.chart-rain-bar {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: briseBarY 520ms var(--ease-soft) backwards;
+}
+
+/* Der Radar-Marker gleitet weich zum nächsten Frame. */
+.radar-marker {
+  transition: transform 620ms var(--ease-soft);
+}
+
+/* Kleine, dauerhafte Bewegung an Symptomsstellen. */
+.hero-condition .ui-icon {
+  animation: briseSway 5.5s ease-in-out infinite alternate;
+}
+
+.hero-outlook-icon .ui-icon {
+  animation: briseBob 4.2s ease-in-out infinite;
+}
+
+.brand-degree {
+  display: inline-block;
+  animation: briseSway 9s ease-in-out infinite alternate;
+}
+
+#titleTime.is-ticking {
+  display: inline-block;
+  animation: briseTick 260ms var(--ease-soft);
+}
+
+html[data-scrolling='on'] .hero-condition .ui-icon,
+html[data-scrolling='on'] .hero-outlook-icon .ui-icon,
+html[data-scrolling='on'] .brand-degree {
+  animation-play-state: paused !important;
+}
+
+html[data-scrolling='on'] .radar-marker {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-temp,
+  .favorite-row,
+  .forecast-row,
+  .day-hour-row,
+  .setting-row,
+  .shortcut-row,
+  .hour-item,
+  .day-summary-cell,
+  .metric-bar i,
+  .daylight-line i,
+  .chart-line,
+  .chart-area,
+  .chart-rain-bar,
+  .hero-condition .ui-icon,
+  .hero-outlook-icon .ui-icon,
+  .brand-degree,
+  #titleTime.is-ticking {
+    animation: none !important;
+  }
+
+  .chart-line { stroke-dasharray: none; stroke-dashoffset: 0; }
+  .radar-marker { transition: none !important; }
+}
+
+html[data-motion='off'] .chart-line {
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+}
