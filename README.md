@@ -32,6 +32,7 @@ Die Ortsuche findet **jeden Ort in Deutschland**, auch kleine Gemeinden und Stad
 - **Deutschlandkarte** mit Städtevergleich, Ranking und echten Bundesländergrenzen.
 - **Einrichtung beim ersten Start**: Darstellung wählen und den eigenen Startort aus ganz Deutschland suchen.
 - **Suche & Favoriten**, persistente Einstellungen, Einheiten, fünf Farbwelten (*Mitternacht*, *Tageslicht*, *Abendrot*, *Ozean*, *Nordwald*) und sechs Akzentfarben.
+- **Überarbeitete Oberfläche**: mehr Icons, menschlichere Texte und ruhige Animationen – weiterhin flüssig beim Scrollen.
 - **Offline-Fallback**: zuletzt geladene Daten bleiben mit klar gekennzeichnetem Cache-Status nutzbar.
 - **Skaliert mit der Arbeitsfläche**: auch als kleines, geteiltes Fenster auf Hyprland bleibt die Oberfläche übersichtlich.
 - **Wayland-optimiert**: native GTK/Wayland-Darstellung, eigene Fensterdekoration und ein Launcher für Hyprland.
@@ -66,7 +67,7 @@ Falls kein vorgebautes Binary vorhanden ist, baut `install.sh` automatisch aus d
 ### Portable Variante
 
 ```bash
-tar -xzf dist/brise-1.0.7-x86_64.tar.gz
+tar -xzf dist/brise-1.0.8-x86_64.tar.gz
 cd dist && ./install.sh
 ```
 
@@ -78,7 +79,7 @@ Mit yay:
 yay -S brise
 ```
 
-Das Paket baut Brise aus den Quellen von `v1.0.7` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
+Das Paket baut Brise aus den Quellen von `v1.0.8` und installiert Binary, Launcher, Desktop-Datei und Icons nach `/usr`. Der Launcher öffnet das Fenster geteilt auf dem Monitor unter dem Mauszeiger; mit `BRISE_MONITOR=DP-4 brise-launch` lässt sich ein anderer Monitor erzwingen.
 
 Noch nicht im AUR? Unter [`aur/PKGBUILD`](aur/PKGBUILD) liegt ein Paketrezept – damit baut `makepkg -si` Brise selbst.
 
