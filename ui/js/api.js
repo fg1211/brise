@@ -44,12 +44,12 @@ export async function fetchSummaries(cities, force = false) {
   });
 }
 
-/** Ortsuche im ausgewählten Land und in der ausgewählten Sprache. */
+/** Ortsuche weltweit über Open-Meteo Geocoding, in der Oberflächensprache. */
 export async function searchPlaces(query) {
   const settings = session();
   return invoke('search_places', {
     query,
-    country: settings.country || 'DE',
+    country: 'ALL',
     language: settings.language || 'de',
   });
 }
