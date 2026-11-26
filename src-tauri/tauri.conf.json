@@ -41,8 +41,8 @@
       "icons/icon.png"
     ],
     "category": "Weather",
-    "shortDescription": "Moderne DWD-Wetter-App für deutsche Städte",
-    "longDescription": "Brise zeigt aktuelle DWD-Wetterdaten, Vorhersagen, Warnungen, Regenradar und einen deutschlandweiten Städtevergleich — gestochen scharf und für Wayland gebaut.",
+    "shortDescription": "Moderne Wetter-App für Orte weltweit",
+    "longDescription": "Brise zeigt Wetter für Orte auf der ganzen Welt, mit DWD-Daten und Open-Meteo, Vorhersagen, Warnungen, Regenradar und einem deutschlandweiten Städtevergleich — gestochen scharf und für Wayland gebaut.",
     "linux": {
       "deb": {
         "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
