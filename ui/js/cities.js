@@ -72,6 +72,9 @@ export const CITIES = [
   { id: 'zugspitze', name: 'Zugspitze', state: 'Bayern', lat: 47.4211, lon: 10.9853 },
 ];
 
+// Die mitgelieferten Städte sind alle deutsch; neue Orte tragen ihr Land selbst.
+for (const city of CITIES) city.country = 'DE';
+
 const CUSTOM_CITIES_KEY = 'brise.customCities.v1';
 
 function loadCustomCities() {
@@ -91,6 +94,7 @@ function loadCustomCities() {
       id: city.id,
       name: city.name,
       state: typeof city.state === 'string' ? city.state : 'Deutschland',
+      country: typeof city.country === 'string' ? city.country.toUpperCase() : 'DE',
       lat: city.lat,
       lon: city.lon,
       custom: true,
@@ -113,6 +117,7 @@ export function registerCity(place) {
     id: place.id,
     name: String(place.name || '').trim(),
     state: String(place.state || 'Deutschland').trim(),
+    country: String(place.country || 'DE').toUpperCase(),
     lat: Number(place.lat),
     lon: Number(place.lon),
     custom: true,
