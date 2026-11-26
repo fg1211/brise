@@ -192,7 +192,7 @@ export function renderTrendChart(container, model, range = '48h', settings = { t
           ${grid}
           ${bars.replaceAll('class="chart-rain-bar"', `class="chart-rain-bar" fill="url(#${gradientId}-bar)"`)}
           <path class="chart-area" d="${areaPath}" fill="url(#${gradientId})"/>
-          <path class="chart-line" d="${linePath}"/>
+          <path class="chart-line" pathLength="1" d="${linePath}"/>
           <line class="chart-now-line" x1="${nowX}" y1="${top}" x2="${nowX}" y2="${baseline}"/>
           <circle class="chart-now-dot" cx="${points[0].x}" cy="${points[0].y}" r="3.5"/>
           <text class="chart-now-label" x="${Math.min(width - right - 20, Math.max(left + 20, nowX))}" y="${top - 7}" text-anchor="middle">JETZT</text>
