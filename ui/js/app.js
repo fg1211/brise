@@ -1224,7 +1224,7 @@ function openSettingsModal() {
       <div class="settings-section">
         <div class="settings-section-title">Region & Sprache</div>
         <div class="setting-row">
-          <div class="setting-row-copy"><div class="setting-label">Land</div><div class="setting-hint">In welchem Land sollen Orte gesucht und Wetter geholt werden?</div></div>
+          <div class="setting-row-copy"><div class="setting-label">Land</div><div class="setting-hint">Die Ortsuche ist weltweit. Dieses Land bestimmt die Wetterquelle (DWD nur für Deutschland) und die Deutschlandkarte.</div></div>
           <div class="setting-control"><select class="settings-select" data-setting="country" aria-label="Land">${countrySelect}</select></div>
         </div>
         <div class="setting-row">
@@ -1447,7 +1447,7 @@ function searchGroups(query) {
     return true;
   });
   if (remote.length) {
-    groups.push({ label: 'Weitere Orte in Deutschland', items: remote.map((city) => ({ kind: 'city', city, remote: true })) });
+    groups.push({ label: 'Weitere Orte weltweit', items: remote.map((city) => ({ kind: 'city', city, remote: true })) });
   }
   return groups;
 }
@@ -1505,9 +1505,13 @@ function searchItemMarkup(item, index) {
     const weather = summaryWeather(city.id);
     const favorite = isFavorite(city.id);
     const temp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '';
+    const countryLabel = item.remote ? countryName(city.country, state.settings.language) : '';
+    const placeLabel = countryLabel && countryLabel !== city.state
+      ? `${city.state}, ${countryLabel}`
+      : (city.state || countryLabel);
     const weatherLabel = weather
-      ? `${summaryLabel(city, weather)} · ${city.state}`
-      : (item.remote ? `${city.state} · Neu in Brise` : city.state);
+      ? `${summaryLabel(city, weather)} · ${placeLabel}`
+      : (item.remote ? `${placeLabel} · Neu in Brise` : placeLabel);
     const iconMarkup = weather ? weatherIcon(summaryIconName(city, weather)) : icon('pin', 15);
     return `<div class="command-item${selected}${item.remote ? ' is-remote' : ''}" data-search-item="${index}" role="option" aria-selected="${index === state.searchIndex}">
       <span class="command-item-icon">${iconMarkup}</span>
@@ -1542,7 +1546,7 @@ function renderSearchResults(resetIndex = false) {
   if (state.searchIndex >= state.searchItems.length) state.searchIndex = Math.max(0, state.searchItems.length - 1);
   const status = [];
   if (state.remoteLoading) {
-    status.push(`<div class="command-status"><span class="loader-orbit is-small"></span> Weitere Orte in Deutschland werden gesucht …</div>`);
+    status.push(`<div class="command-status"><span class="loader-orbit is-small"></span> Weitere Orte weltweit werden gesucht …</div>`);
   } else if (state.remoteError) {
     status.push(`<div class="command-status is-error">Ortsuche derzeit nicht verfügbar: ${escapeHTML(state.remoteError)}</div>`);
   }
@@ -1713,7 +1717,7 @@ function renderOnboardingResults(resetIndex = false) {
   }
   const status = [];
   if (onboarding.loading) {
-    status.push('<div class="onboard-status"><span class="loader-orbit is-small"></span> Orte in ganz Deutschland werden gesucht …</div>');
+    status.push('<div class="onboard-status"><span class="loader-orbit is-small"></span> Orte weltweit werden gesucht …</div>');
   } else if (onboarding.error) {
     status.push(`<div class="onboard-status is-error">Ortsuche gerade nicht verfügbar: ${escapeHTML(onboarding.error)}. Die Orte unten funktionieren trotzdem.</div>`);
   }
@@ -1724,9 +1728,13 @@ function renderOnboardingResults(resetIndex = false) {
     const city = item.city;
     const weather = summaryWeather(city.id);
     const temp = finite(weather?.temperature) ? formatTemp(weather.temperature, state.settings.tempUnit) : '';
+    const countryLabel = item.remote ? countryName(city.country, state.settings.language) : '';
+    const placeLabel = countryLabel && countryLabel !== city.state
+      ? `${city.state}, ${countryLabel}`
+      : (city.state || countryLabel);
     const detail = weather
-      ? `${summaryLabel(city, weather)} · ${city.state}`
-      : (item.remote ? `${city.state} · Neu in Brise` : city.state);
+      ? `${summaryLabel(city, weather)} · ${placeLabel}`
+      : (item.remote ? `${placeLabel} · Neu in Brise` : placeLabel);
     const selected = index === onboarding.index;
     return `<div class="onboard-city${selected ? ' is-selected' : ''}" data-onboard-item="${index}" role="option" aria-selected="${selected}">
       <span class="onboard-city-icon">${weather ? weatherIcon(summaryIconName(city, weather)) : icon('pin', 17)}</span>
@@ -1858,11 +1866,11 @@ function openOnboarding() {
         <div class="onboard-features">
           <div class="onboard-feature">
             <span class="onboard-feature-icon">${icon('weather', 17)}</span>
-            <span><strong>Echte DWD-Daten</strong><small>Amtliche Messungen und Vorhersagen, kostenlos und ohne Anmeldung.</small></span>
+            <span><strong>Wetter aus offenen Quellen</strong><small>DWD und Open-Meteo, weltweit und kostenlos ohne Anmeldung.</small></span>
           </div>
           <div class="onboard-feature">
             <span class="onboard-feature-icon">${icon('pin', 17)}</span>
-            <span><strong>Jeder Ort in Deutschland</strong><small>Auch kleine Gemeinden und Stadtteile lassen sich hinzufügen.</small></span>
+            <span><strong>Jeder Ort weltweit</strong><small>Städte und Gemeinden auf der ganzen Welt lassen sich hinzufügen.</small></span>
           </div>
           <div class="onboard-feature">
             <span class="onboard-feature-icon">${icon('settings', 17)}</span>
@@ -1886,9 +1894,9 @@ function openOnboarding() {
         <label class="onboard-label" for="onboardInput">Welcher Ort ist dein Startort?</label>
         <div class="onboard-search">
           ${icon('search', 18)}
-          <input id="onboardInput" type="text" placeholder="Ort suchen, zum Beispiel Goslar …" autocomplete="off" spellcheck="false">
+          <input id="onboardInput" type="text" placeholder="Ort suchen, zum Beispiel Tokio …" autocomplete="off" spellcheck="false">
         </div>
-        <p class="onboard-hint">Ganz Deutschland – auch kleine Orte und Stadtteile.</p>
+        <p class="onboard-hint">Weltweit – mit Open-Meteo und DWD.</p>
         <div class="onboard-results" id="onboardResults" role="listbox" aria-label="Orte"></div>
       </section>
     </div>
