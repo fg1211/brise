@@ -21,7 +21,8 @@ chmod +x dist/brise-launch dist/install.sh
 
 archive="dist/brise-${version}-x86_64.tar.gz"
 tar -czf "$archive" \
-  -C dist brise brise-launch brise.desktop install.sh README.md icons libbrise-vblank.so
+  -C dist brise brise-launch brise.desktop install.sh README.md icons libbrise-vblank.so \
+  -C "$root" README.de.md LICENSE THIRD_PARTY_NOTICES.md
 
 echo "Fertig: $archive"
-echo "Installieren: tar -xzf $archive && cd dist && ./install.sh"
+echo "Installieren: mkdir brise && tar -xzf $archive -C brise && (cd brise && ./install.sh)"
