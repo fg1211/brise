@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#081018" />
-    <meta name="description" content="Brise — modernes DWD-Wetter für deutsche Städte, mit Regenradar, Warnungen und Vorhersagen." />
-    <title>Brise — Wetter für Deutschland</title>
+    <meta name="description" content="Brise — Wetter für Orte weltweit, mit Regenradar, Warnungen und Vorhersagen." />
+    <title>Brise — Wetter, wo du bist</title>
     <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" />
     <link rel="preload" href="./fonts/InterVariable.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preload" href="./fonts/SpaceGrotesk-Medium.otf" as="font" type="font/otf" crossorigin />
@@ -33,7 +33,7 @@
         <div class="brand" data-tauri-drag-region aria-label="Brise">
           <img src="./assets/logo.svg" alt="" class="brand-mark" draggable="false" />
           <span class="brand-name">brise<span class="brand-degree">°</span></span>
-          <span class="brand-tag">DWD</span>
+          <span class="brand-tag" id="brandProvider" data-i18n-ignore>DWD</span>
         </div>
 
         <nav class="primary-nav" aria-label="Hauptansichten">
@@ -49,10 +49,10 @@
         </nav>
 
         <div class="titlebar-tools">
-          <div class="live-pill" id="livePill" title="Daten vom Deutschen Wetterdienst">
+          <div class="live-pill" id="livePill" title="Daten aus offenen Wetterquellen">
             <i class="live-dot"></i><span id="liveLabel">DWD aktuell</span>
           </div>
-          <div class="title-clock" id="titleClock" title="Deutsche Uhrzeit">
+          <div class="title-clock" id="titleClock" title="Ortszeit">
             <span id="titleTime">--:--</span>
             <span id="titleDate">Heute</span>
           </div>
@@ -104,16 +104,16 @@
             <div class="source-card">
               <div class="source-head">
                 <span class="source-shield" data-ui-icon="shield"></span>
-                <span class="source-mark">DWD</span>
+                <span class="source-mark" id="sourceProvider" data-i18n-ignore>DWD</span>
                 <span class="source-live"><i></i> Offene Daten</span>
               </div>
-              <p>Amtliche Wetterdaten, direkt vom Deutschen Wetterdienst über Bright Sky.</p>
+              <p>Wetterdaten aus offenen Quellen – DWD und Open-Meteo.</p>
               <div class="source-footer">
                 <span>Kostenlos, ohne Anmeldung</span>
                 <button type="button" id="openAbout" aria-label="Über die Datenquelle">Info</button>
               </div>
             </div>
-            <div class="sidebar-credit">Brise 1.0.8</div>
+            <div class="sidebar-credit">Brise 1.1.0</div>
           </div>
         </aside>
 
@@ -140,7 +140,7 @@
     </div>
 
     <noscript>
-      <div class="noscript">Brise benötigt JavaScript, um das Wetter vom DWD anzuzeigen.</div>
+      <div class="noscript">Brise benötigt JavaScript, um das Wetter anzuzeigen.</div>
     </noscript>
     <script type="module" src="./js/app.js"></script>
   </body>
