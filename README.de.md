@@ -22,7 +22,7 @@ Eine moderne, schnelle Wetter-App für den Linux-Desktop. Kein API-Key, kein Kon
 
 Brise zeigt Beobachtungen und Vorhersagen des **Deutschen Wetterdienstes** über die offene Bright-Sky-Schnittstelle – und Wetter für den Rest der Welt von der kostenlosen **Open-Meteo**-API. Für Deutschland kannst du die Quelle selbst wählen. Das Backend ist in Rust geschrieben, die Oberfläche läuft in WebKitGTK – dadurch bleibt die App leicht, schnell und auf Wayland scharf.
 
-Die Ortsuche findet **jeden Ort im gewählten Land**, auch kleine Gemeinden und Stadtteile. Gefundene Orte werden dauerhaft gespeichert und lassen sich als Favoriten anlegen. Die Oberfläche spricht Deutsch, Englisch und Niederländisch – unabhängig vom Wetter-Land.
+Die Ortsuche ist **weltweit**: Sie findet Städte, Gemeinden und Stadtteile in allen Ländern über die kostenlose Open-Meteo-Geocoding-API – ohne API-Key und ohne Konto. Gefundene Orte werden dauerhaft gespeichert und lassen sich als Favoriten anlegen. Die Oberfläche spricht Deutsch, Englisch und Niederländisch – unabhängig vom Wetter-Land.
 
 ## Funktionen
 
@@ -108,9 +108,9 @@ cd src-tauri && cargo build --release
 | `1` / `2` / `3` | Wetter / Radar / Deutschlandkarte |
 | `Esc` | Dialog schließen |
 
-In den Einstellungen wählst du das Suchland, die Sprache der Oberfläche (Deutsch, Englisch oder Niederländisch) und – für Deutschland – ob das Wetter von DWD oder Open-Meteo kommt. Alle anderen Länder nutzen Open-Meteo. Radar und amtliche Warnungen bleiben DWD-only.
+In den Einstellungen wählst du die Standardregion, die Sprache der Oberfläche (Deutsch, Englisch oder Niederländisch) und – für Deutschland – ob das Wetter von DWD oder Open-Meteo kommt. Alle anderen Länder nutzen Open-Meteo. Radar und amtliche Warnungen bleiben DWD-only. Die Suche umfasst immer die ganze Welt.
 
-In der Suche lassen sich Orte im gewählten Land beliebig eingeben – auch Orte, die nicht in der mitgelieferten Städteauswahl sind. Mit dem Stern neben einem Treffer wird er dauerhaft zu den Favoriten hinzugefügt.
+In der Suche lässt sich jeder Ort der Welt eingeben – auch Orte, die nicht in der mitgelieferten Städteauswahl sind. Mit dem Stern neben einem Treffer wird er dauerhaft zu den Favoriten hinzugefügt.
 
 ## Monitor-Verhalten auf Hyprland
 
