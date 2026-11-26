@@ -9,14 +9,19 @@ echo "== Release-Build =="
 cd "$root/src-tauri"
 cargo build --release
 
-echo "== Bundle zusammenstellen =="
+echo "== Vblank-Shim bauen =="
 cd "$root"
+drm_cflags="$(pkg-config --cflags libdrm 2>/dev/null || printf '%s' '-I/usr/include/libdrm')"
+${CC:-cc} -shared -fPIC -O2 $drm_cflags \
+  src-tauri/vblank_shim.c -o dist/libbrise-vblank.so -ldl
+
+echo "== Bundle zusammenstellen =="
 install -m 0755 src-tauri/target/release/brise dist/brise
 chmod +x dist/brise-launch dist/install.sh
 
 archive="dist/brise-${version}-x86_64.tar.gz"
 tar -czf "$archive" \
-  -C dist brise brise-launch brise.desktop install.sh README.md icons
+  -C dist brise brise-launch brise.desktop install.sh README.md icons libbrise-vblank.so
 
 echo "Fertig: $archive"
 echo "Installieren: tar -xzf $archive && cd dist && ./install.sh"
