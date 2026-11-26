@@ -159,6 +159,28 @@ html[data-scrolling='on'] .radar-marker {
   transition: none !important;
 }
 
+/* Beim Wechsel zwischen gespeicherten Orten einmalig die Eingänge aus. */
+html[data-weather-switch='on'] .hero-temp,
+html[data-weather-switch='on'] .favorite-row,
+html[data-weather-switch='on'] .forecast-row,
+html[data-weather-switch='on'] .day-hour-row,
+html[data-weather-switch='on'] .setting-row,
+html[data-weather-switch='on'] .shortcut-row,
+html[data-weather-switch='on'] .hour-item,
+html[data-weather-switch='on'] .day-summary-cell,
+html[data-weather-switch='on'] .metric-bar i,
+html[data-weather-switch='on'] .daylight-line i,
+html[data-weather-switch='on'] .chart-line,
+html[data-weather-switch='on'] .chart-area,
+html[data-weather-switch='on'] .chart-rain-bar {
+  animation: none !important;
+}
+
+html[data-weather-switch='on'] .chart-line {
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hero-temp,
   .favorite-row,
