@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use base64::Engine;
-use chrono::{Duration, SecondsFormat, Utc};
+use chrono::{Duration, NaiveDateTime, SecondsFormat, Utc};
 use flate2::read::ZlibDecoder;
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
@@ -15,6 +15,7 @@ use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, Position, Size};
 
 const BRIGHT_SKY: &str = "https://api.brightsky.dev";
+const OPEN_METEO: &str = "https://api.open-meteo.com/v1/forecast";
 const GEOCODING: &str = "https://geocoding-api.open-meteo.com/v1/search";
 const WEATHER_CACHE_SECONDS: i64 = 600;
 const PLACE_CACHE_SECONDS: i64 = 7 * 24 * 60 * 60;
@@ -53,9 +54,32 @@ struct CityRequest {
     state: String,
     lat: f64,
     lon: f64,
+    #[serde(default = "default_country")]
+    country: String,
+    #[serde(default = "default_provider")]
+    provider: String,
+}
+
+fn default_country() -> String {
+    "DE".into()
+}
+
+fn default_provider() -> String {
+    "dwd".into()
 }
 
 impl CityRequest {
+    /// DWD-Daten nur für Deutschland und nur auf ausdrücklichen Wunsch.
+    /// Überall sonst – und wenn Open-Meteo gewählt wurde – nutzen wir
+    /// die kostenlose Open-Meteo-API ohne Schlüssel und ohne Konto.
+    fn uses_dwd(&self) -> bool {
+        self.provider.eq_ignore_ascii_case("dwd") && self.country.eq_ignore_ascii_case("DE")
+    }
+
+    fn weather_key(&self) -> String {
+        format!("{}-{}", self.id, if self.uses_dwd() { "dwd" } else { "open-meteo" })
+    }
+
     fn validate(&self) -> Result<(), String> {
         if self.id.is_empty()
             || self.id.len() > 64
@@ -72,15 +96,20 @@ impl CityRequest {
         if !(-90.0..=90.0).contains(&self.lat) || !(-180.0..=180.0).contains(&self.lon) {
             return Err("Koordinaten liegen außerhalb des gültigen Bereichs.".into());
         }
+        if self.country.len() != 2 || !self.country.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err("Ungültiger Ländercode.".into());
+        }
+        if !matches!(self.provider.to_ascii_lowercase().as_str(), "dwd" | "open-meteo") {
+            return Err("Unbekannte Datenquelle.".into());
+        }
         Ok(())
     }
 }
 
-async fn get_json(
-    path: &str,
+async fn get_json_url(
+    url: &str,
     query: &[(&str, String)],
 ) -> Result<Value, String> {
-    let url = format!("{BRIGHT_SKY}{path}");
     let response = http()
         .get(url)
         .query(query)
@@ -96,12 +125,14 @@ async fn get_json(
 
     if !status.is_success() {
         let short = body.chars().take(220).collect::<String>();
-        return Err(format!(
-            "DWD-Schnittstelle antwortet mit {status}. {short}"
-        ));
+        return Err(format!("Schnittstelle antwortet mit {status}. {short}"));
     }
 
     serde_json::from_str(&body).map_err(|e| format!("Ungültige API-Antwort: {e}"))
+}
+
+async fn get_json(path: &str, query: &[(&str, String)]) -> Result<Value, String> {
+    get_json_url(&format!("{BRIGHT_SKY}{path}"), query).await
 }
 
 fn cache_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -270,6 +301,165 @@ fn build_bundle(
         "sources": hourly_sources,
         "alerts": alert_records,
         "alerts_available": alerts_available,
+        "timezone": "Europe/Berlin",
+        "provider": "dwd",
+    }))
+}
+
+fn json_number(record: &Value, key: &str) -> Value {
+    record
+        .get(key)
+        .and_then(Value::as_f64)
+        .map(|value| json!(value))
+        .unwrap_or(Value::Null)
+}
+
+fn open_meteo_timestamp(value: Option<&str>, offset_seconds: i64) -> Value {
+    let raw = match value {
+        Some(raw) => raw,
+        None => return Value::Null,
+    };
+    let parsed = NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M")
+        .or_else(|_| NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S"))
+        .ok();
+    match parsed {
+        Some(naive) => json!(naive.and_utc().timestamp() - offset_seconds),
+        None => Value::Null,
+    }
+}
+
+fn open_meteo_condition(code: i64, is_day: bool) -> (&'static str, &'static str) {
+    match code {
+        0 => (
+            if is_day { "clear-day" } else { "clear-night" },
+            "dry",
+        ),
+        1 | 2 => (
+            if is_day { "partly-cloudy-day" } else { "partly-cloudy-night" },
+            "dry",
+        ),
+        3 => ("cloudy", "dry"),
+        45 | 48 => ("fog", "fog"),
+        51 | 53 | 55 | 61 | 63 | 65 | 80 | 81 | 82 => ("rain", "rain"),
+        56 | 57 | 66 | 67 => ("sleet", "sleet"),
+        71 | 73 | 75 | 77 | 85 | 86 => ("snow", "snow"),
+        95 | 96 | 99 => ("thunderstorm", "thunderstorm"),
+        _ => ("cloudy", "dry"),
+    }
+}
+
+/// Open-Meteo liefert dieselben Werte wie Bright Sky, nur in anderen
+/// Feldnamen. Wir formen sie hier in das vorhandene Brise-Format um, damit
+/// Oberfläche und Cache unverändert bleiben.
+async fn fetch_open_meteo_bundle(city: &CityRequest) -> Result<Value, String> {
+    let current_fields = "temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day";
+    let hourly_fields = "temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,precipitation_probability,weather_code,cloud_cover,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,sunshine_duration,shortwave_radiation,is_day";
+    let response = get_json_url(
+        OPEN_METEO,
+        &[
+            ("latitude", city.lat.to_string()),
+            ("longitude", city.lon.to_string()),
+            ("current", current_fields.into()),
+            ("hourly", hourly_fields.into()),
+            ("timezone", "auto".into()),
+            ("forecast_days", "8".into()),
+            ("past_days", "2".into()),
+            ("wind_speed_unit", "kmh".into()),
+            ("precipitation_unit", "mm".into()),
+        ],
+    )
+    .await?;
+
+    let offset = response
+        .get("utc_offset_seconds")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let current_raw = response.get("current").cloned().unwrap_or(Value::Null);
+    let code = current_raw
+        .get("weather_code")
+        .and_then(Value::as_i64)
+        .unwrap_or(3);
+    let is_day = current_raw
+        .get("is_day")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        != 0;
+    let (icon, condition) = open_meteo_condition(code, is_day);
+    let current = json!({
+        "timestamp": open_meteo_timestamp(current_raw.get("time").and_then(Value::as_str), offset),
+        "icon": icon,
+        "condition": condition,
+        "cloud_cover": json_number(&current_raw, "cloud_cover"),
+        "temperature": json_number(&current_raw, "temperature_2m"),
+        "relative_humidity": json_number(&current_raw, "relative_humidity_2m"),
+        "dew_point": json_number(&current_raw, "dew_point_2m"),
+        "wind_speed_10": json_number(&current_raw, "wind_speed_10m"),
+        "wind_gust_speed_10": json_number(&current_raw, "wind_gusts_10m"),
+        "wind_direction_10": json_number(&current_raw, "wind_direction_10m"),
+        "pressure_msl": json_number(&current_raw, "pressure_msl"),
+        "visibility": json_number(&current_raw, "visibility"),
+        "precipitation_60": json_number(&current_raw, "precipitation"),
+    });
+
+    let hourly_raw = response.get("hourly").cloned().unwrap_or(Value::Null);
+    let times = hourly_raw
+        .get("time")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut hourly = Vec::with_capacity(times.len());
+    for (index, time) in times.iter().enumerate() {
+        let at = |key: &str| {
+            hourly_raw
+                .get(key)
+                .and_then(Value::as_array)
+                .and_then(|values| values.get(index))
+                .cloned()
+                .unwrap_or(Value::Null)
+        };
+        let temperature = at("temperature_2m").as_f64();
+        if temperature.is_none() {
+            continue;
+        }
+        let code = at("weather_code").as_i64().unwrap_or(3);
+        let is_day = at("is_day").as_i64().unwrap_or(1) != 0;
+        let (icon, condition) = open_meteo_condition(code, is_day);
+        hourly.push(json!({
+            "timestamp": open_meteo_timestamp(time.as_str(), offset),
+            "icon": icon,
+            "condition": condition,
+            "temperature": temperature,
+            "relative_humidity": at("relative_humidity_2m"),
+            "dew_point": at("dew_point_2m"),
+            "precipitation": at("precipitation"),
+            "precipitation_probability": at("precipitation_probability"),
+            "wind_direction": at("wind_direction_10m"),
+            "wind_speed": at("wind_speed_10m"),
+            "wind_gust_speed": at("wind_gusts_10m"),
+            "pressure_msl": at("pressure_msl"),
+            "visibility": at("visibility"),
+            // Open-Meteo liefert Sonnenschein in Sekunden, Brise rechnet in Minuten.
+            "sunshine": json!(at("sunshine_duration").as_f64().map(|value| value / 60.0)),
+            "solar": at("shortwave_radiation"),
+            "cloud_cover": at("cloud_cover"),
+        }));
+    }
+
+    let sources = json!([{
+        "id": "open-meteo",
+        "station_name": "Open-Meteo",
+    }]);
+    Ok(json!({
+        "fetched_at": Utc::now().timestamp(),
+        "stale": false,
+        "current": current,
+        "current_sources": sources,
+        "hourly": hourly,
+        "sources": sources,
+        "alerts": [],
+        "alerts_available": false,
+        "provider": "open-meteo",
+        "timezone": response.get("timezone").cloned().unwrap_or(Value::Null),
     }))
 }
 
@@ -281,7 +471,7 @@ async fn get_weather(
 ) -> Result<Value, String> {
     city.validate()?;
     let force = force.unwrap_or(false);
-    let path = cache_path(&app, "weather", &city.id);
+    let path = cache_path(&app, "weather", &city.weather_key());
     let cached = path.as_ref().and_then(read_cache);
 
     if !force {
@@ -293,24 +483,32 @@ async fn get_weather(
         }
     }
 
-    let current_fut = fetch_current(&city);
-    let weather_fut = fetch_weather(&city);
-    let alerts_fut = fetch_alerts(&city);
-    let (current, hourly, alerts) = futures::join!(current_fut, weather_fut, alerts_fut);
+    let result = if city.uses_dwd() {
+        let current_fut = fetch_current(&city);
+        let weather_fut = fetch_weather(&city);
+        let alerts_fut = fetch_alerts(&city);
+        let (current, hourly, alerts) = futures::join!(current_fut, weather_fut, alerts_fut);
+        match (current, hourly) {
+            (Ok(current), Ok(hourly)) => {
+                Ok(build_bundle(current, hourly, alerts, cached.as_ref()))
+            }
+            (current_result, hourly_result) => Err(current_result
+                .err()
+                .or_else(|| hourly_result.err())
+                .unwrap_or_else(|| "Unbekannter Fehler".to_string())),
+        }
+    } else {
+        fetch_open_meteo_bundle(&city).await
+    };
 
-    match (current, hourly) {
-        (Ok(current), Ok(hourly)) => {
-            let bundle = build_bundle(current, hourly, alerts, cached.as_ref());
+    match result {
+        Ok(bundle) => {
             if let Some(path) = path {
                 write_cache(&path, &bundle);
             }
             Ok(bundle)
         }
-        (current_result, hourly_result) => {
-            let reason = current_result
-                .err()
-                .or_else(|| hourly_result.err())
-                .unwrap_or_else(|| "Unbekannter Fehler".to_string());
+        Err(reason) => {
             if let Some(cached) = cached {
                 eprintln!("[brise] Netzwerkfehler, nutze Cache für {}: {reason}", city.name);
                 Ok(mark_stale(cached))
@@ -509,7 +707,7 @@ async fn fetch_summary(
     city: CityRequest,
     force: bool,
 ) -> Value {
-    let path = cache_path(app, "summaries", &city.id);
+    let path = cache_path(app, "summaries", &city.weather_key());
     let cached = path.as_ref().and_then(read_cache);
 
     if !force {
@@ -521,9 +719,32 @@ async fn fetch_summary(
         }
     }
 
-    match fetch_current(&city).await {
-        Ok(current) => {
-            let weather = current.get("weather").cloned().unwrap_or(Value::Null);
+    let result = if city.uses_dwd() {
+        match fetch_current(&city).await {
+            Ok(current) => Ok((
+                current.get("weather").cloned().unwrap_or(Value::Null),
+                current
+                    .get("sources")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new())),
+            )),
+            Err(error) => Err(error),
+        }
+    } else {
+        match fetch_open_meteo_bundle(&city).await {
+            Ok(bundle) => Ok((
+                bundle.get("current").cloned().unwrap_or(Value::Null),
+                bundle
+                    .get("current_sources")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new())),
+            )),
+            Err(error) => Err(error),
+        }
+    };
+
+    match result {
+        Ok((weather, sources)) => {
             if weather.is_null() {
                 if let Some(cached) = cached {
                     return mark_stale(cached);
@@ -531,13 +752,9 @@ async fn fetch_summary(
                 return json!({
                     "city_id": city.id,
                     "weather": Value::Null,
-                    "error": "Keine aktuelle DWD-Beobachtung verfügbar."
+                    "error": "Keine aktuelle Beobachtung verfügbar."
                 });
             }
-            let sources = current
-                .get("sources")
-                .cloned()
-                .unwrap_or_else(|| Value::Array(Vec::new()));
             let summary = json!({
                 "city_id": city.id,
                 "name": city.name,
@@ -600,16 +817,30 @@ async fn get_current_summaries(
     Ok(tasks)
 }
 
-/// Search any place in Germany. Weather still comes from DWD via Bright Sky;
-/// this endpoint is only used to turn a town name into coordinates.
+/// Ortsuche für jedes Land. Land und Sprache kommen aus den Einstellungen;
+/// ohne Angabe bleibt Deutschland die Vorauswahl.
 #[tauri::command]
-async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, String> {
+async fn search_places(
+    app: tauri::AppHandle,
+    query: String,
+    country: Option<String>,
+    language: Option<String>,
+) -> Result<Value, String> {
     let query = query.trim();
     if query.chars().count() < 2 || query.chars().count() > 80 {
         return Ok(json!({ "results": [] }));
     }
 
-    let path = cache_path(&app, "places", &cache_key(query));
+    let country_code = country
+        .unwrap_or_else(|| "DE".into())
+        .trim()
+        .to_uppercase();
+    let lang = language
+        .unwrap_or_else(|| "de".into())
+        .trim()
+        .to_lowercase();
+    let cache_id = format!("{country_code}|{lang}|{query}");
+    let path = cache_path(&app, "places", &cache_key(&cache_id));
     if let Some(cached) = path.as_ref().and_then(read_cache) {
         let age = cache_age(&cached);
         if (0..PLACE_CACHE_SECONDS).contains(&age) {
@@ -617,15 +848,19 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
         }
     }
 
+    let mut params = vec![
+        ("name", query.to_string()),
+        ("count", "15".into()),
+        ("language", lang.clone()),
+        ("format", "json".into()),
+    ];
+    if country_code.len() == 2 && country_code != "ALL" {
+        params.push(("countryCode", country_code.clone()));
+    }
+
     let response = http()
         .get(GEOCODING)
-        .query(&[
-            ("name", query),
-            ("count", "15"),
-            ("language", "de"),
-            ("format", "json"),
-            ("countryCode", "DE"),
-        ])
+        .query(&params)
         .send()
         .await
         .map_err(|e| format!("Ortsuche nicht erreichbar: {e}"))?;
@@ -658,10 +893,13 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
     let mut results: Vec<Value> = raw
         .into_iter()
         .filter(|place| {
+            if country_code == "ALL" || country_code.len() != 2 {
+                return true;
+            }
             place
                 .get("country_code")
                 .and_then(Value::as_str)
-                .map(|code| code == "DE")
+                .map(|code| code.eq_ignore_ascii_case(&country_code))
                 .unwrap_or(false)
         })
         .filter_map(|place| {
@@ -687,12 +925,21 @@ async fn search_places(app: tauri::AppHandle, query: String) -> Result<Value, St
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty())
                 .or_else(|| place.get("admin3").and_then(Value::as_str))
+                .filter(|value| !value.is_empty())
+                .or_else(|| place.get("country").and_then(Value::as_str))
                 .unwrap_or("Deutschland")
                 .to_string();
+            let place_country = place
+                .get("country_code")
+                .and_then(Value::as_str)
+                .unwrap_or("DE")
+                .to_uppercase();
             Some(json!({
                 "id": id,
                 "name": name,
                 "state": state,
+                "country": place.get("country").and_then(Value::as_str).unwrap_or("Deutschland"),
+                "countryCode": place_country,
                 "lat": lat,
                 "lon": lon,
                 "population": place.get("population").and_then(Value::as_u64).unwrap_or(0),
@@ -784,10 +1031,12 @@ mod webkit_ffi {
         fn webkit_feature_list_unref(list: *mut c_void);
     }
 
-    /// WebKit soll die echte Monitorfrequenz nutzen, statt sie auf „nah an 60 fps“
-    /// zu begrenzen. Die Feature-API ist in der Rust-Bindung noch nicht
-    /// enthalten, daher rufen wir sie direkt auf.
-    pub fn use_display_refresh_rate(settings: &webkit2gtk::Settings) {
+    /// WebKit standardmäßig auf die echte Monitorfrequenz trimmen statt auf
+    /// „nah an 60 fps“. `enabled = true` schaltet das 60-fps-Limit ein,
+    /// `enabled = false` lässt WebKit mit der Bildwiederholrate laufen.
+    /// Die Feature-API ist in der Rust-Bindung noch nicht enthalten, daher
+    /// rufen wir sie direkt auf.
+    pub fn set_prefer_near_60_fps(settings: &webkit2gtk::Settings, enabled: bool) {
         use webkit2gtk::glib::translate::ToGlibPtr;
 
         let features = unsafe { webkit_settings_get_all_features() };
@@ -800,7 +1049,7 @@ mod webkit_ffi {
         if !feature.is_null() {
             let settings_ptr = ToGlibPtr::<*mut webkit2gtk::ffi::WebKitSettings>::to_glib_none(settings).0;
             unsafe {
-                webkit_settings_set_feature_enabled(settings_ptr.cast(), feature, 0);
+                webkit_settings_set_feature_enabled(settings_ptr.cast(), feature, i32::from(enabled));
             }
         }
         unsafe { webkit_feature_list_unref(features) };
@@ -821,8 +1070,46 @@ fn enable_gpu_acceleration(window: &tauri::WebviewWindow) {
         settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Always);
         settings.set_enable_webgl(true);
         settings.set_enable_smooth_scrolling(true);
-        webkit_ffi::use_display_refresh_rate(&settings);
+        webkit_ffi::set_prefer_near_60_fps(&settings, false);
     });
+}
+
+/// Hardwarebeschleunigung zur Laufzeit umschalten. Für eine verlässliche
+/// Wirkung danach Neustart oder Neuladen empfohlen.
+#[tauri::command]
+fn set_hardware_acceleration(_app: tauri::AppHandle, enabled: bool) {
+    #[cfg(target_os = "linux")]
+    if let Some(window) = _app.get_webview_window("main") {
+        let _ = window.with_webview(move |webview| {
+            use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+            let webview = webview.inner();
+            if let Some(settings) = webview.settings() {
+                let policy = if enabled {
+                    HardwareAccelerationPolicy::Always
+                } else {
+                    HardwareAccelerationPolicy::Never
+                };
+                settings.set_hardware_acceleration_policy(policy);
+                settings.set_enable_webgl(enabled);
+            }
+        });
+    }
+}
+
+/// VSync umschalten: an bedeutet Renderen im Monitor-Takt, aus bedeutet das
+/// WebKit-eigene Limit „nah an 60 fps“.
+#[tauri::command]
+fn set_vsync(_app: tauri::AppHandle, enabled: bool) {
+    #[cfg(target_os = "linux")]
+    if let Some(window) = _app.get_webview_window("main") {
+        let _ = window.with_webview(move |webview| {
+            use webkit2gtk::WebViewExt;
+            let webview = webview.inner();
+            if let Some(settings) = webview.settings() {
+                webkit_ffi::set_prefer_near_60_fps(&settings, !enabled);
+            }
+        });
+    }
 }
 
 fn main() {
@@ -843,8 +1130,11 @@ fn main() {
             get_weather,
             get_current_summaries,
             get_radar,
-            search_places
+            search_places,
+            set_hardware_acceleration,
+            set_vsync
         ])
         .run(tauri::generate_context!())
         .expect("error while running Brise");
 }
+
