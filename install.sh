@@ -23,7 +23,7 @@ if [ ! -x "$binary" ]; then
   fi
 fi
 
-for file in brise-launch brise.desktop; do
+for file in brise-launch brise.desktop libbrise-vblank.so; do
   if [ ! -f "$here/dist/$file" ]; then
     echo "Fehler: $here/dist/$file fehlt." >&2
     exit 1
@@ -35,6 +35,7 @@ mkdir -p "$bin" "$apps" "$icons/128x128/apps" "$icons/256x256/apps" "$icons/512x
 
 install -m 0755 "$binary" "$bin/brise"
 install -m 0755 "$here/dist/brise-launch" "$bin/brise-launch"
+install -m 0755 "$here/dist/libbrise-vblank.so" "$bin/libbrise-vblank.so"
 install -m 0644 "$here/dist/brise.desktop" "$apps/brise.desktop"
 install -m 0644 "$here/dist/icons/128x128.png" "$icons/128x128/apps/brise.png"
 install -m 0644 "$here/dist/icons/128x128@2x.png" "$icons/256x256/apps/brise.png"
