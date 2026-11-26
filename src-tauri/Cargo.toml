@@ -1,6 +1,6 @@
 [package]
 name = "brise"
-version = "1.0.8"
+version = "1.1.0"
 description = "Brise — modernes DWD-Wetter für deutsche Städte"
 authors = ["Brise"]
 edition = "2021"
