@@ -1019,8 +1019,28 @@ fn place_on_secondary_monitor(window: &tauri::WebviewWindow) {
 #[cfg(target_os = "linux")]
 mod webkit_ffi {
     use std::ffi::{c_char, c_int, c_void};
+    use std::sync::atomic::{AtomicIsize, Ordering};
+
+    // GDKs Frame-Clock kennt die Monitorfrequenz bei GL-Fenstern nicht:
+    // eglSwapBuffers committed das Surface selbst, dadurch holt GDK keinen
+    // Wayland-Frame-Callback und wartet fest 1/60 s. Wir schreiben das
+    // Intervall in die Timings des aktuellen Frames. GdkFrameTimings ist
+    // privat; je nach GTK-Version liegt refresh_interval bei Offset 56 oder
+    // 48. Der Getter entscheidet, welcher Offset gilt.
+    static REFRESH_OFFSET: AtomicIsize = AtomicIsize::new(0);
 
     extern "C" {
+        fn gtk_widget_get_frame_clock(widget: *mut c_void) -> *mut c_void;
+        fn gtk_widget_get_window(widget: *mut c_void) -> *mut c_void;
+        fn gdk_window_get_display(window: *mut c_void) -> *mut c_void;
+        fn gdk_display_get_monitor_at_window(
+            display: *mut c_void,
+            window: *mut c_void,
+        ) -> *mut c_void;
+        fn gdk_monitor_get_refresh_rate(monitor: *mut c_void) -> i32;
+        fn gdk_frame_clock_get_current_timings(clock: *mut c_void) -> *mut c_void;
+        fn gdk_frame_timings_get_refresh_interval(timings: *mut c_void) -> i64;
+
         fn webkit_settings_get_all_features() -> *mut c_void;
         fn webkit_feature_list_find(list: *mut c_void, identifier: *const c_char) -> *mut c_void;
         fn webkit_settings_set_feature_enabled(
@@ -1031,11 +1051,72 @@ mod webkit_ffi {
         fn webkit_feature_list_unref(list: *mut c_void);
     }
 
+    /// Die Frame-Clock jedes gezeichneten Frames auf den Monitor-Takt
+    /// trimmen. GL-Fenster bekommen sonst 60 Hz, obwohl der Monitor 180 Hz
+    /// meldet; ohne GL läuft alles, aber in Software und ruckelt.
+    pub fn pace_frame_clock(widget: *mut c_void) {
+        let offset = REFRESH_OFFSET.load(Ordering::Relaxed);
+        if offset < 0 {
+            return;
+        }
+
+        let clock = unsafe { gtk_widget_get_frame_clock(widget) };
+        if clock.is_null() {
+            return;
+        }
+        let timings = unsafe { gdk_frame_clock_get_current_timings(clock) };
+        if timings.is_null() || unsafe { gdk_frame_timings_get_refresh_interval(timings) } != 0 {
+            return;
+        }
+
+        let window = unsafe { gtk_widget_get_window(widget) };
+        if window.is_null() {
+            return;
+        }
+        let display = unsafe { gdk_window_get_display(window) };
+        if display.is_null() {
+            return;
+        }
+        let monitor = unsafe { gdk_display_get_monitor_at_window(display, window) };
+        if monitor.is_null() {
+            return;
+        }
+        let milli_hz = unsafe { gdk_monitor_get_refresh_rate(monitor) };
+        if milli_hz <= 0 {
+            return;
+        }
+        let interval = 1_000_000_000i64 / milli_hz as i64;
+
+        let candidates = if offset > 0 {
+            &[offset as usize][..]
+        } else {
+            &[56usize, 48][..]
+        };
+        for candidate in candidates {
+            let field = unsafe { (timings as *mut u8).add(*candidate) as *mut i64 };
+            if unsafe { *field } != 0 {
+                continue;
+            }
+            unsafe { *field = interval };
+            if unsafe { gdk_frame_timings_get_refresh_interval(timings) } == interval {
+                REFRESH_OFFSET.store(*candidate as isize, Ordering::Relaxed);
+                return;
+            }
+            unsafe { *field = 0 };
+        }
+        REFRESH_OFFSET.store(-1, Ordering::Relaxed);
+    }
+
     /// WebKit standardmäßig auf die echte Monitorfrequenz trimmen statt auf
     /// „nah an 60 fps“. `enabled = true` schaltet das 60-fps-Limit ein,
     /// `enabled = false` lässt WebKit mit der Bildwiederholrate laufen.
     /// Die Feature-API ist in der Rust-Bindung noch nicht enthalten, daher
     /// rufen wir sie direkt auf.
+    ///
+    /// Zusätzlich bekommt GTKs Frame-Clock pro Frame die echte Monitorrate:
+    /// Bei GL-Fenstern fragt GDK den Compositor nicht nach dem Intervall und
+    /// wartet sonst immer 1/60 s – auch auf 180-Hz-Displays. GdkFrameTimings
+    /// ist privat; das gesetzte Feld wird über seinen Getter verifiziert.
     pub fn set_prefer_near_60_fps(settings: &webkit2gtk::Settings, enabled: bool) {
         use webkit2gtk::glib::translate::ToGlibPtr;
 
@@ -1058,31 +1139,28 @@ mod webkit_ffi {
 
 /// WebKitGTK dauerhaft auf Hardwarebeschleunigung trimmen. Das betrifft auch
 /// das Scrollen: Compositing, 2D-Canvas und WebGL laufen dann über die GPU.
+/// Die Frame-Clock bekommt bei jedem Frame die Monitorfrequenz, damit GL und
+/// 180 Hz zusammen funktionieren.
 #[cfg(target_os = "linux")]
 fn enable_gpu_acceleration(window: &tauri::WebviewWindow) {
     let _ = window.with_webview(|webview| {
+        use gtk::prelude::*;
         use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
 
         let webview = webview.inner();
-        let Some(settings) = webview.settings() else {
+        let Some(settings) = WebViewExt::settings(&webview) else {
             return;
         };
-        // Mit GDK_GL=disable holt GTK keine Wayland-Frame-Callbacks; WebKit
-        // darf dann keinen GL-Pfad erzwingen, sonst bricht der 180-Hz-Takt
-        // auf NVIDIA zusammen.
-        let gl_disabled = matches!(
-            std::env::var("GDK_GL").as_deref(),
-            Ok("disable" | "0" | "false")
-        );
-        let policy = if gl_disabled {
-            HardwareAccelerationPolicy::Never
-        } else {
-            HardwareAccelerationPolicy::Always
-        };
-        settings.set_hardware_acceleration_policy(policy);
-        settings.set_enable_webgl(!gl_disabled);
+        settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Always);
+        settings.set_enable_webgl(true);
         settings.set_enable_smooth_scrolling(true);
         webkit_ffi::set_prefer_near_60_fps(&settings, false);
+
+        let widget = webview.as_ptr() as *mut std::ffi::c_void;
+        webview.connect_draw(move |_, _| {
+            webkit_ffi::pace_frame_clock(widget);
+            false.into()
+        });
     });
 }
 
@@ -1096,17 +1174,13 @@ fn set_hardware_acceleration(_app: tauri::AppHandle, enabled: bool) {
             use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
             let webview = webview.inner();
             if let Some(settings) = webview.settings() {
-                let gl_disabled = matches!(
-                    std::env::var("GDK_GL").as_deref(),
-                    Ok("disable" | "0" | "false")
-                );
-                let policy = if enabled && !gl_disabled {
+                let policy = if enabled {
                     HardwareAccelerationPolicy::Always
                 } else {
                     HardwareAccelerationPolicy::Never
                 };
                 settings.set_hardware_acceleration_policy(policy);
-                settings.set_enable_webgl(enabled && !gl_disabled);
+                settings.set_enable_webgl(enabled);
             }
         });
     }
