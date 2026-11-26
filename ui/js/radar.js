@@ -461,8 +461,15 @@ export class RadarRenderer {
   positionMarker() {
     if (!this.marker || !this.projection || !this.city) return;
     const [x, y] = this.projection.toXY(this.city.lon, this.city.lat);
-    this.marker.style.left = `${x}px`;
-    this.marker.style.top = `${y}px`;
+    const transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    if (this.marker.dataset.ready !== '1') {
+      this.marker.dataset.ready = '1';
+      this.marker.style.transition = 'none';
+      this.marker.style.transform = transform;
+      requestAnimationFrame(() => { this.marker.style.transition = ''; });
+      return;
+    }
+    this.marker.style.transform = transform;
   }
 
   setFrame(index) {
