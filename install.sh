@@ -48,5 +48,5 @@ fi
 
 echo "Brise installiert nach $prefix"
 echo "Start: $bin/brise-launch"
-echo "Hinweis: Auf Hyprland startet der Launcher standardmäßig auf DP-2."
-echo "         Mit BRISE_MONITOR=DP-1 lässt sich der Monitor ändern."
+echo "Hinweis: Auf Hyprland startet der Launcher auf dem Monitor unter dem Mauszeiger."
+echo "         Mit BRISE_MONITOR=DP-1 lässt sich der Monitor festlegen."
